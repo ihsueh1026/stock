@@ -2,7 +2,9 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>TWSE 個股技術分析</title>
 <link rel="icon" href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%230b1018%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2210%22%20fill%3D%22%235b8dff%22%2F%3E%3C%2Fsvg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20180%20180%22%3E%3Crect%20width%3D%22180%22%20height%3D%22180%22%20rx%3D%2240%22%20fill%3D%22%230b1018%22%2F%3E%3Ccircle%20cx%3D%2290%22%20cy%3D%2290%22%20r%3D%2232%22%20fill%3D%22%235b8dff%22%2F%3E%3C%2Fsvg%3E">
@@ -365,23 +367,32 @@
 
   .wc-actions {
     display: flex; gap: 2px;
-    opacity: 0; transition: opacity 0.15s;
+    opacity: 0.55; transition: opacity 0.15s;
     margin: -4px -6px 0 0;
   }
   .watch-card:hover .wc-actions,
   .watch-card.empty-card .wc-actions { opacity: 1; }
+  /* Touch devices have no hover — always show actions at full opacity. */
+  @media (hover: none) {
+    .wc-actions { opacity: 1; }
+  }
   .wc-btn {
     background: transparent;
     color: var(--text-faint);
     border: none;
-    border-radius: 5px;
-    padding: 4px 7px; font-size: 13px;
+    border-radius: 6px;
+    padding: 8px 10px; font-size: 15px;
+    min-width: 36px; min-height: 36px;
     cursor: pointer;
     transition: all 0.15s;
     line-height: 1;
+    -webkit-tap-highlight-color: rgba(91, 141, 255, 0.2);
   }
   .wc-btn:hover { background: var(--card-2); color: var(--text); }
   .wc-btn.danger:hover { color: var(--red); background: var(--red-bg); }
+  /* Touch active feedback (replaces missing :hover) */
+  .wc-btn:active { background: var(--card-2); color: var(--text); }
+  .wc-btn.danger:active { color: var(--red); background: var(--red-bg); }
 
   /* Price block (most prominent) */
   .wc-price {
@@ -694,6 +705,95 @@
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: #2c3550; border-radius: 5px; }
   ::-webkit-scrollbar-thumb:hover { background: #3d4868; }
+
+  /* ====================================================================
+     Mobile (≤ 640px) — iPhone optimisations
+     ==================================================================== */
+  @media (max-width: 640px) {
+    /* Container: tighter horizontal padding + safe-area for notched phones */
+    .container {
+      padding: 12px max(10px, env(safe-area-inset-left))
+               12px max(10px, env(safe-area-inset-right));
+    }
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* Header: compact, smaller title, no sticky-gap waste */
+    .header {
+      padding: 10px 12px;
+      gap: 8px;
+      top: 0;
+      border-radius: 10px;
+    }
+    .header h1 { font-size: 17px; gap: 8px; flex-basis: 100%; }
+    .header h1 .crumb { font-size: 16px; gap: 6px; flex-wrap: wrap; }
+    .header h1 .crumb::before { display: none; }
+    .header h1 .crumb .c-industry { font-size: 11px; padding: 2px 6px; }
+    .header-actions { width: 100%; gap: 6px; }
+    .header-actions .field { font-size: 12px; gap: 4px; }
+    .header-actions input,
+    .header-actions select { width: 100%; min-height: 38px; font-size: 14px; }
+    .header-actions button { min-height: 38px; padding: 8px 12px; font-size: 14px; }
+
+    /* Add-card form: stack vertically, full-width */
+    .add-card { padding: 10px 12px; }
+    .add-card form { flex-wrap: wrap; gap: 8px; }
+    .add-card input { width: 100%; min-height: 40px; font-size: 16px; }
+    .add-card button { min-height: 40px; padding: 9px 14px; }
+    .add-card .hint { display: none; }
+
+    /* Watchlist grid: force 1 col with tighter gap */
+    .grid { grid-template-columns: 1fr; gap: 10px; }
+
+    /* Watch cards: tighter padding, smaller min-height, bigger price */
+    .watch-card { padding: 14px 14px 12px; min-height: 0; }
+    .wc-name { font-size: 18px; }
+    .wc-price { margin-top: 10px; gap: 8px; }
+    .wc-close { font-size: 24px; }
+    .wc-empty-msg { font-size: 13px; padding: 14px 0 6px; }
+
+    /* TAIEX bar: stack instead of compress */
+    .taiex-bar { flex-wrap: wrap; gap: 8px; }
+    .taiex-bar input { flex: 1; min-width: 0; }
+
+    /* Card padding tighter */
+    .card { padding: 14px; }
+    .card-title { font-size: 14px; margin-bottom: 10px; }
+
+    /* Hero / two-col already collapse at 900px — make sure spacing is tight */
+    .hero, .two-col { gap: 10px; margin: 10px 0; }
+
+    /* Charts: stack and shorter */
+    .chart-card canvas { max-height: 220px; }
+
+    /* Data table: keep horizontal scroll, hide non-essential cols */
+    .data-table { font-size: 11.5px; }
+    .data-table th, .data-table td { padding: 6px 8px; }
+
+    /* Mini-table padding tighter */
+    .mini-table th, .mini-table td { padding: 7px 9px; }
+
+    /* Status / hint smaller */
+    .status { font-size: 13px; }
+
+    /* Step / history dots a bit larger for tap-friendly tooltip area */
+    .step-light { width: 14px; height: 14px; }
+  }
+
+  /* iPhone SE / very narrow (≤ 380px) — extra trim */
+  @media (max-width: 380px) {
+    .header h1 { font-size: 16px; }
+    .wc-name { font-size: 17px; }
+    .wc-close { font-size: 22px; }
+    .card { padding: 12px; }
+  }
+
+  /* Disable hover transform on touch — feels janky after tap */
+  @media (hover: none) {
+    .watch-card:hover { transform: none; }
+  }
 </style>
 </head>
 <body>
