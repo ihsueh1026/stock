@@ -79,20 +79,27 @@ def _taiex_cache() -> Path:
     return CACHE_DIR / f"taiex_{_today_tag()}.json"
 
 
+# Market identifiers — drives fetcher routing, T86 source, and frontend label.
+MARKET_TWSE = "twse"   # 上市
+MARKET_OTC = "otc"     # 上櫃
+
+
 T86_URL = "https://www.twse.com.tw/rwd/zh/fund/T86"
+T86_OTC_URL = "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
 T86_HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; stock-web/1.0)",
     "Accept": "application/json",
 }
 
 
-def _t86_cache(date_compact: str) -> Path:
-    return CACHE_DIR / f"t86_{date_compact}.json"
+def _t86_cache(date_compact: str, market: str = MARKET_TWSE) -> Path:
+    prefix = "t86" if market == MARKET_TWSE else "t86otc"
+    return CACHE_DIR / f"{prefix}_{date_compact}.json"
 
 
-def _t86_cached_only(date_iso: str) -> dict | None:
+def _t86_cached_only(date_iso: str, market: str = MARKET_TWSE) -> dict | None:
     """Return cached T86 dict for the date, or None if not cached. No network."""
-    cache = _t86_cache(date_iso.replace("-", ""))
+    cache = _t86_cache(date_iso.replace("-", ""), market)
     if not cache.exists():
         return None
     try:
@@ -102,7 +109,7 @@ def _t86_cached_only(date_iso: str) -> dict | None:
         return None
 
 
-def _fetch_t86(date_iso: str) -> dict:
+def _fetch_t86(date_iso: str, market: str = MARKET_TWSE) -> dict:
     """Return {code: {f, t, d, tot}} of net shares per stock for date_iso.
 
     Empty dict on non-trading days or fetch errors. Result is cached forever
@@ -110,51 +117,97 @@ def _fetch_t86(date_iso: str) -> dict:
     Net values are in shares (not lots).
     """
     date_compact = date_iso.replace("-", "")
-    cache = _t86_cache(date_compact)
+    cache = _t86_cache(date_compact, market)
     if cache.exists():
         try:
             with cache.open() as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             pass
-    with _lock_for(f"__t86_{date_compact}__"):
+    with _lock_for(f"__t86_{market}_{date_compact}__"):
         if cache.exists():
             try:
                 with cache.open() as f:
                     return json.load(f)
             except (OSError, json.JSONDecodeError):
                 pass
-        try:
-            resp = requests.get(
-                T86_URL,
-                params={"date": date_compact, "selectType": "ALL", "response": "json"},
-                headers=T86_HTTP_HEADERS, timeout=15,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except (requests.RequestException, ValueError):
-            return {}
-        out: dict = {}
-        if data.get("stat") == "OK":
-            for row in data.get("data", []):
-                try:
-                    code = (row[0] or "").strip()
-                    if not code:
-                        continue
-                    foreign = int((row[4] or "0").replace(",", ""))
-                    trust = int((row[10] or "0").replace(",", ""))
-                    dealer = int((row[11] or "0").replace(",", ""))
-                    total = int((row[18] or "0").replace(",", ""))
-                    out[code] = {"f": foreign, "t": trust, "d": dealer, "tot": total}
-                except (IndexError, ValueError):
-                    continue
-        # Persist even empty dicts (non-trading days) to skip re-fetching.
+        if market == MARKET_TWSE:
+            out = _fetch_t86_twse(date_compact)
+        else:
+            out = _fetch_t86_otc(date_iso)
         try:
             with cache.open("w") as f:
                 json.dump(out, f)
         except OSError:
             pass
         return out
+
+
+def _fetch_t86_twse(date_compact: str) -> dict:
+    try:
+        resp = requests.get(
+            T86_URL,
+            params={"date": date_compact, "selectType": "ALL", "response": "json"},
+            headers=T86_HTTP_HEADERS, timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return {}
+    out: dict = {}
+    if data.get("stat") == "OK":
+        for row in data.get("data", []):
+            try:
+                code = (row[0] or "").strip()
+                if not code:
+                    continue
+                foreign = int((row[4] or "0").replace(",", ""))
+                trust = int((row[10] or "0").replace(",", ""))
+                dealer = int((row[11] or "0").replace(",", ""))
+                total = int((row[18] or "0").replace(",", ""))
+                out[code] = {"f": foreign, "t": trust, "d": dealer, "tot": total}
+            except (IndexError, ValueError):
+                continue
+    return out
+
+
+def _fetch_t86_otc(date_iso: str) -> dict:
+    """TPEx 三大法人買賣明細 (24-col schema).
+
+    Columns verified against live API:
+        [0]  代號
+        [1]  名稱
+        [10] 外資合計買賣超股數
+        [13] 投信買賣超股數
+        [22] 自營商合計買賣超股數
+        [23] 三大法人合計買賣超股數
+    """
+    try:
+        resp = requests.get(
+            T86_OTC_URL,
+            params={"type": "Daily", "sect": "EW", "date": date_iso.replace("-", "/")},
+            headers=T86_HTTP_HEADERS, timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return {}
+    out: dict = {}
+    tables = data.get("tables") or []
+    rows = tables[0].get("data") if tables else []
+    for row in rows:
+        try:
+            code = (row[0] or "").strip()
+            if not code:
+                continue
+            foreign = int((row[10] or "0").replace(",", ""))
+            trust = int((row[13] or "0").replace(",", ""))
+            dealer = int((row[22] or "0").replace(",", ""))
+            total = int((row[23] or "0").replace(",", ""))
+            out[code] = {"f": foreign, "t": trust, "d": dealer, "tot": total}
+        except (IndexError, ValueError):
+            continue
+    return out
 
 
 TAIEX_MANUAL_FILE = CACHE_DIR / "taiex_manual.json"
@@ -252,21 +305,25 @@ def _load_stock(code: str, output_rows: int) -> list[dict]:
     cache = _stock_cache(code)
     if cache.exists():
         with cache.open() as f:
-            return json.load(f)["rows"]
+            return json.load(f).get("rows") or []
 
     with _lock_for(code):
         if cache.exists():
             with cache.open() as f:
-                return json.load(f)["rows"]
+                return json.load(f).get("rows") or []
 
         # Always fetch enough to satisfy the largest reasonable request,
         # so a single day's cache covers any output window the user picks.
         target = max(output_rows, 200) + WEB_WARMUP_DAYS
-        raw = twse.fetch_recent_rows(
-            lambda y, m: twse.fetch_stock_month(y, m, code),
-            target,
-            code,
-        )
+        market = _market_for(code)
+        if market == MARKET_OTC:
+            month_fetcher = lambda y, m: twse.fetch_otc_month(y, m, code)
+        else:
+            # Default to TWSE if unknown — keeps prior behavior for codes
+            # not yet in the company maps (e.g. brand-new listings).
+            market = MARKET_TWSE
+            month_fetcher = lambda y, m: twse.fetch_stock_month(y, m, code)
+        raw = twse.fetch_recent_rows(month_fetcher, target, code)
         if not raw:
             return []
         series = twse.parse_stock_rows(raw)
@@ -275,8 +332,20 @@ def _load_stock(code: str, output_rows: int) -> list[dict]:
         taiex = _load_taiex(target)
         rows = _compute_rows(series, taiex)
         with cache.open("w") as f:
-            json.dump({"code": code, "rows": rows}, f)
+            json.dump({"code": code, "market": market, "rows": rows}, f)
         return rows
+
+
+def _stock_cache_market(code: str) -> str | None:
+    """Read the persisted market from today's cache, if any."""
+    cache = _stock_cache(code)
+    if not cache.exists():
+        return None
+    try:
+        with cache.open() as f:
+            return json.load(f).get("market")
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 # ---- 7-step dashboard (mirrors stock.xlsx per-stock dashboard) -------------
@@ -536,7 +605,7 @@ def _step_7_exit(window, last, prev):
     return {**base, "light": light, "detail": detail}
 
 
-def _step_8_institutional(window, code, cached_only=False):
+def _step_8_institutional(window, code, market=MARKET_TWSE, cached_only=False):
     """5 日三大法人籌碼 → 法人認養度。
 
     依據文件「動態法人認養度」概念,但暫不依市值動態調權重,
@@ -559,12 +628,12 @@ def _step_8_institutional(window, code, cached_only=False):
         if not date_iso:
             continue
         if cached_only:
-            t86 = _t86_cached_only(date_iso)
+            t86 = _t86_cached_only(date_iso, market)
             if t86 is None:
                 continue
             info = t86.get(code)
         else:
-            info = _fetch_t86(date_iso).get(code)
+            info = _fetch_t86(date_iso, market).get(code)
         if info is None:
             continue
         lots = r.get("lots") or 0
@@ -720,7 +789,7 @@ def _distance(last, sigma):
     ]
 
 
-def _compute_steps(window, code, t86_cached_only=False):
+def _compute_steps(window, code, market=MARKET_TWSE, t86_cached_only=False):
     """Run the 7 step checks on a 20-day window. Returns the steps list with
     UI step numbers (1..7) assigned. Window must have ≥2 rows."""
     last = window[-1]
@@ -732,7 +801,8 @@ def _compute_steps(window, code, t86_cached_only=False):
     s4 = _step_4_volume(window, last, prev, s3["light"], s6["light"])
     s7 = _step_7_exit(window, last, prev)
     if code:
-        s8 = _step_8_institutional(window, code, cached_only=t86_cached_only)
+        s8 = _step_8_institutional(window, code, market=market,
+                                   cached_only=t86_cached_only)
     else:
         s8 = {"step": 0, "title": "法人認養", "condition": "5 日三大法人籌碼",
               "light": "gray", "detail": "需股票代碼"}
@@ -745,7 +815,7 @@ def _compute_steps(window, code, t86_cached_only=False):
 HISTORY_DAYS = 10
 
 
-def _history_lights(full_rows, code, days=HISTORY_DAYS):
+def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):
     """For each of the last `days` trading days, recompute the 7 lights and
     the overall summary light using a 20-day window ending at that day.
     Step 7 (法人) reads only from cached T86 to avoid extra network calls;
@@ -759,7 +829,7 @@ def _history_lights(full_rows, code, days=HISTORY_DAYS):
         window = sub[-20:]
         if len(window) < 2:
             continue
-        steps = _compute_steps(window, code, t86_cached_only=True)
+        steps = _compute_steps(window, code, market=market, t86_cached_only=True)
         summary = _summary(steps)
         out.append({
             "date": window[-1]["date"],
@@ -770,7 +840,8 @@ def _history_lights(full_rows, code, days=HISTORY_DAYS):
     return out
 
 
-def compute_dashboard(full_rows: list[dict], code: str | None = None) -> dict:
+def compute_dashboard(full_rows: list[dict], code: str | None = None,
+                      market: str = MARKET_TWSE) -> dict:
     if not full_rows:
         return {"as_of": None, "sigma": None, "steps": [],
                 "summary": None, "price_zones": None, "distance": [],
@@ -782,13 +853,13 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None) -> dict:
                 "summary": None, "price_zones": None, "distance": [],
                 "history": []}
     sigma = _sigma(window)
-    steps = _compute_steps(window, code, t86_cached_only=False)
+    steps = _compute_steps(window, code, market=market, t86_cached_only=False)
     s6 = steps[4]  # 持有
 
     summary = _summary(steps)
     zones = _price_zones(summary, last, sigma, s6["light"])
     distance = _distance(last, sigma) + _stoploss_levels(last, sigma)
-    history = _history_lights(full_rows, code)
+    history = _history_lights(full_rows, code, market=market)
 
     return {
         "as_of": last["date"],
@@ -808,6 +879,7 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None) -> dict:
 # fetch is plenty.
 
 COMPANY_INFO_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+COMPANY_INFO_URL_OTC = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 COMPANY_HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; stock-web/1.0)",
     "Accept": "application/json",
@@ -829,15 +901,16 @@ INDUSTRY_NAMES = {
 }
 
 _company_lock = threading.Lock()
-_company_cache_mem = {"date": None, "data": {}}
+_company_cache_mem = {"date": None, "twse": {}, "otc": {}}
 
 
-def _company_cache_path() -> Path:
-    return CACHE_DIR / f"companies_{_today_tag()}.json"
+def _company_cache_path(market: str = MARKET_TWSE) -> Path:
+    suffix = "" if market == MARKET_TWSE else "_otc"
+    return CACHE_DIR / f"companies{suffix}_{_today_tag()}.json"
 
 
-def _fetch_companies() -> dict:
-    cache = _company_cache_path()
+def _fetch_companies_twse() -> dict:
+    cache = _company_cache_path(MARKET_TWSE)
     if cache.exists():
         try:
             with cache.open() as f:
@@ -872,6 +945,7 @@ def _fetch_companies() -> dict:
                 "short_name": (row.get("公司簡稱") or "").strip(),
                 "industry": ind_name,
                 "industry_code": ind_code,
+                "market": MARKET_TWSE,
             }
         try:
             with cache.open("w") as f:
@@ -881,15 +955,86 @@ def _fetch_companies() -> dict:
         return out
 
 
-def _company_info(code: str) -> dict:
+def _fetch_companies_otc() -> dict:
+    cache = _company_cache_path(MARKET_OTC)
+    if cache.exists():
+        try:
+            with cache.open() as f:
+                rows = json.load(f)
+            return {r["code"]: r for r in rows}
+        except (OSError, json.JSONDecodeError):
+            pass
+    with _company_lock:
+        if cache.exists():
+            try:
+                with cache.open() as f:
+                    rows = json.load(f)
+                return {r["code"]: r for r in rows}
+            except (OSError, json.JSONDecodeError):
+                pass
+        try:
+            resp = requests.get(COMPANY_INFO_URL_OTC,
+                                headers=COMPANY_HTTP_HEADERS, timeout=20)
+            resp.raise_for_status()
+            raw = resp.json()
+        except (requests.RequestException, ValueError):
+            return {}
+        out = {}
+        for row in raw:
+            code = (row.get("SecuritiesCompanyCode") or "").strip()
+            if not code:
+                continue
+            ind_code = (row.get("SecuritiesIndustryCode") or "").strip()
+            # TPEx codes are 1-2 digits; pad to match TWSE 2-digit map.
+            ind_key = ind_code.zfill(2) if ind_code.isdigit() else ind_code
+            ind_name = INDUSTRY_NAMES.get(ind_key, ind_code)
+            out[code] = {
+                "code": code,
+                "short_name": (row.get("CompanyAbbreviation") or "").strip(),
+                "industry": ind_name,
+                "industry_code": ind_code,
+                "market": MARKET_OTC,
+            }
+        try:
+            with cache.open("w") as f:
+                json.dump(list(out.values()), f, ensure_ascii=False)
+        except OSError:
+            pass
+        return out
+
+
+def _refresh_company_cache() -> None:
     today = _today_tag()
     if _company_cache_mem["date"] != today:
-        _company_cache_mem["data"] = _fetch_companies()
+        _company_cache_mem["twse"] = _fetch_companies_twse()
+        _company_cache_mem["otc"] = _fetch_companies_otc()
         _company_cache_mem["date"] = today
-    info = _company_cache_mem["data"].get(code)
+
+
+def _company_info(code: str) -> dict:
+    _refresh_company_cache()
+    info = _company_cache_mem["twse"].get(code)
     if info:
         return info
-    return {"code": code, "short_name": "", "industry": "", "industry_code": ""}
+    info = _company_cache_mem["otc"].get(code)
+    if info:
+        return info
+    # Unknown code — fall back to whatever today's stock cache claims.
+    market = _stock_cache_market(code) or ""
+    return {"code": code, "short_name": "", "industry": "",
+            "industry_code": "", "market": market}
+
+
+def _market_for(code: str) -> str | None:
+    """Look up a code's market via the daily company maps. Returns
+    MARKET_TWSE / MARKET_OTC, or None if the code isn't in either."""
+    _refresh_company_cache()
+    if code in _company_cache_mem["twse"]:
+        return MARKET_TWSE
+    if code in _company_cache_mem["otc"]:
+        return MARKET_OTC
+    # If we already fetched data for this code today, trust the persisted market.
+    return _stock_cache_market(code)
 
 
 # ---- Watchlist persistence --------------------------------------------------
@@ -922,23 +1067,28 @@ def _validate_code(code: str):
 def _watchlist_item(code: str) -> dict:
     """Read today's cache (if any) and return a compact summary for the watchlist."""
     info = _company_info(code)
+    market = info.get("market") or _stock_cache_market(code) or MARKET_TWSE
     base = {
         "code": code, "cached": False,
         "short_name": info["short_name"],
         "industry": info["industry"],
+        "market": market,
     }
     cache = _stock_cache(code)
     if not cache.exists():
         return base
     try:
         with cache.open() as f:
-            full = json.load(f).get("rows") or []
+            payload = json.load(f)
+        full = payload.get("rows") or []
+        cached_market = payload.get("market") or market
         if not full:
             return base
         last = full[-1]
-        dash = compute_dashboard(full, code)
+        dash = compute_dashboard(full, code, market=cached_market)
         return {
             **base,
+            "market": cached_market,
             "cached": True,
             "as_of": last.get("date"),
             "close": last.get("close"),
@@ -967,11 +1117,16 @@ def get_stock(code: str, rows: int = 30):
     full = _load_stock(code, rows)
     if not full:
         raise HTTPException(404, f"no data found for {code}")
+    info = _company_info(code)
+    market = _stock_cache_market(code) or info.get("market") or MARKET_TWSE
+    if not info.get("market"):
+        info = {**info, "market": market}
     return {
         "code": code,
-        "info": _company_info(code),
+        "info": info,
+        "market": market,
         "rows": full[-rows:],
-        "dashboard": compute_dashboard(full, code),
+        "dashboard": compute_dashboard(full, code, market=market),
     }
 
 
@@ -1088,15 +1243,19 @@ def taiex_today_put(payload: dict = Body(...)):
         except (OSError, json.JSONDecodeError):
             pass
     # Patch existing per-stock caches for today: if last row's date == today
-    # and taiex is None, fill it in.
+    # and taiex is None, fill it in. Restrict to numeric-prefixed files
+    # (stock codes are 4-6 digits) so taiex/t86/companies caches are skipped.
     today_tag = _today_tag()
     patched = 0
     for stock_cache in CACHE_DIR.glob(f"*_{today_tag}.json"):
-        if stock_cache.name.startswith("taiex_") or stock_cache.name.startswith("t86_"):
+        prefix = stock_cache.stem.rsplit("_", 1)[0]
+        if not (prefix.isdigit() and 4 <= len(prefix) <= 6):
             continue
         try:
             with stock_cache.open() as f:
                 stock_payload = json.load(f)
+            if not isinstance(stock_payload, dict):
+                continue
             rows = stock_payload.get("rows") or []
             if not rows:
                 continue

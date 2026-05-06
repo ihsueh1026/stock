@@ -50,6 +50,8 @@ from openpyxl.utils import get_column_letter
 
 STOCK_URL = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
 TAIEX_URL = "https://www.twse.com.tw/exchangeReport/FMTQIK"
+# 上櫃個股月成交資料。回傳 {"tables":[{"data":[[ROC日期, 仟股, 仟元, 開, 高, 低, 收, 漲跌, 筆數], ...]}]}
+TPEX_STOCK_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
 
 HEADERS = {
     "User-Agent": (
@@ -167,6 +169,80 @@ def fetch_taiex_month(year: int, month: int) -> List[List[str]]:
         {"response": "json", "date": f"{year}{month:02d}01"},
         f"{year}-{month:02d}",
     )
+
+
+def fetch_otc_month(year: int, month: int, stock_no: str) -> List[List[str]]:
+    """Fetch one month of OTC (上櫃) daily trading rows for a single stock.
+
+    Returns rows in the SAME shape as TWSE STOCK_DAY (so downstream
+    parse_stock_rows() works unchanged):
+        [ROC日期, 成交股數, 成交金額, 開, 高, 低, 收, 漲跌, 筆數]
+
+    TPEx natively reports volume in 仟股 (lots), so we multiply by 1000
+    to align with TWSE's "成交股數" (raw shares).
+    """
+    label = f"{year}-{month:02d}"
+    params = {
+        "code": stock_no,
+        "date": f"{year}/{month:02d}/01",
+        "id": "",
+        "response": "json",
+    }
+    last_stat = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            resp = requests.get(
+                TPEX_STOCK_URL, params=params, headers=HEADERS, timeout=15
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            last_stat = f"request error: {exc}"
+            if attempt < MAX_RETRIES:
+                wait = RETRY_BACKOFF_SEC[attempt]
+                print(f"\n      [retry {attempt + 1}/{MAX_RETRIES}] OTC {label} "
+                      f"({last_stat}); waiting {wait}s...", end="")
+                time.sleep(wait)
+                continue
+            print(f"\n      [fail] OTC {label}: {last_stat}", end=" ")
+            return []
+
+        tables = payload.get("tables") or []
+        rows = tables[0].get("data") if tables else None
+        if rows is None:
+            last_stat = payload.get("stat") or "no tables"
+            if attempt < MAX_RETRIES:
+                wait = RETRY_BACKOFF_SEC[attempt]
+                print(f"\n      [retry {attempt + 1}/{MAX_RETRIES}] OTC {label} "
+                      f"({last_stat}); waiting {wait}s...", end="")
+                time.sleep(wait)
+                continue
+            return []
+
+        out: List[List[str]] = []
+        for r in rows:
+            if len(r) < 9:
+                continue
+            try:
+                lots = int(str(r[1]).replace(",", "").strip() or "0")
+            except ValueError:
+                lots = 0
+            shares = lots * 1000
+            out.append([
+                r[0],                  # ROC date
+                f"{shares:,}",         # shares (TWSE-shape)
+                str(r[2]),             # value
+                str(r[3]),             # open
+                str(r[4]),             # high
+                str(r[5]),             # low
+                str(r[6]),             # close
+                str(r[7]),             # change
+                str(r[8]),             # transactions
+            ])
+        return out
+
+    print(f"\n    [skip] OTC {label}: {last_stat} (after {MAX_RETRIES} retries)", end=" ")
+    return []
 
 
 def previous_month(year: int, month: int) -> Tuple[int, int]:
