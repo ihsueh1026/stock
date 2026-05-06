@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TWSE 個股技術分析</title>
+<link rel="icon" href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%230b1018%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2210%22%20fill%3D%22%235b8dff%22%2F%3E%3C%2Fsvg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20180%20180%22%3E%3Crect%20width%3D%22180%22%20height%3D%22180%22%20rx%3D%2240%22%20fill%3D%22%230b1018%22%2F%3E%3Ccircle%20cx%3D%2290%22%20cy%3D%2290%22%20r%3D%2232%22%20fill%3D%22%235b8dff%22%2F%3E%3C%2Fsvg%3E">
+<style>
+  :root {
+    --bg: #0b1018;
+    --bg-soft: #11172380;
+    --card: #161d2c;
+    --card-2: #1c2435;
+    --card-3: #232c40;
+    --border: #2a3346;
+    --border-soft: #1f2738;
+
+    --text: #e6eaf2;
+    --text-muted: #9aa3b8;
+    --text-faint: #6a7488;
+
+    --accent: #5b8dff;
+    --accent-hover: #7da4ff;
+    --accent-bg: rgba(91, 141, 255, 0.13);
+
+    --green: #34d399;
+    --green-bg: rgba(52, 211, 153, 0.13);
+    --green-soft: rgba(52, 211, 153, 0.28);
+    --teal: #2dd4bf;
+    --teal-bg: rgba(45, 212, 191, 0.13);
+    --teal-soft: rgba(45, 212, 191, 0.28);
+    --red: #f87171;
+    --red-bg: rgba(248, 113, 113, 0.13);
+    --red-soft: rgba(248, 113, 113, 0.28);
+    --orange: #fb923c;
+    --orange-bg: rgba(251, 146, 60, 0.13);
+    --orange-soft: rgba(251, 146, 60, 0.28);
+    --yellow: #fbbf24;
+    --yellow-bg: rgba(251, 191, 36, 0.13);
+    --yellow-soft: rgba(251, 191, 36, 0.28);
+    --gray: #6b7280;
+    --gray-bg: rgba(107, 114, 128, 0.16);
+
+    --price-up: #f87171;
+    --price-down: #34d399;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.25);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.35);
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei",
+                 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 0% 0%, rgba(91, 141, 255, 0.06), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(52, 211, 153, 0.04), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    line-height: 1.5;
+    font-size: 14px;
+    font-feature-settings: "tnum";
+    min-height: 100vh;
+  }
+
+  .container { max-width: 1320px; margin: 0 auto; padding: 20px; }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: rgba(22, 29, 44, 0.85);
+    backdrop-filter: saturate(150%) blur(8px);
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+    position: sticky; top: 12px; z-index: 10;
+  }
+  .header h1 {
+    margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 0.4px;
+    margin-right: auto; color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .header h1 .dot {
+    display: inline-block; width: 8px; height: 8px;
+    background: var(--accent); border-radius: 50%;
+    box-shadow: 0 0 12px var(--accent);
+  }
+  .header h1 .crumb {
+    color: var(--text); font-weight: 600; font-size: 20px;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .header h1 .crumb[hidden] { display: none; }
+  .header h1 .crumb::before {
+    content: ""; display: inline-block;
+    width: 1px; height: 22px; background: var(--border);
+    margin: 0 4px;
+  }
+  .header h1 .crumb .c-code {
+    color: var(--accent); font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .header h1 .crumb .c-name { color: var(--text); font-weight: 600; }
+  .header h1 .crumb .c-industry {
+    font-size: 12px; font-weight: 500;
+    color: var(--text-muted);
+    background: var(--card-2); border: 1px solid var(--border);
+    padding: 2px 8px; border-radius: 999px;
+  }
+
+  .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+
+  input, select {
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font-size: 14px;
+    background: #0f1521; color: var(--text);
+    width: 110px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input:focus, select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+  input[type="number"] { width: 70px; -moz-appearance: textfield; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+  input::placeholder { color: var(--text-faint); }
+  select { width: auto; cursor: pointer; }
+
+  button {
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 6px;
+    padding: 7px 16px; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s, transform 0.1s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:active { transform: scale(0.97); }
+  button:disabled { background: #374257; cursor: not-allowed; }
+
+  button.ghost {
+    background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  button.ghost:hover { background: var(--card-2); color: var(--text); }
+  button.danger { background: transparent; color: var(--red); border: 1px solid var(--red-soft); }
+  button.danger:hover { background: var(--red-bg); }
+  button.icon {
+    padding: 6px 8px; font-size: 14px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 30px;
+  }
+
+  /* Status */
+  .status {
+    color: var(--text-muted); font-size: 13px;
+    padding: 4px 4px 12px; min-height: 24px;
+  }
+  .status.error { color: var(--red); font-weight: 500; }
+  .status strong { color: var(--text); font-weight: 600; }
+
+  /* Card */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    padding: 16px 18px;
+  }
+  .card-title {
+    font-size: 12px; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.6px;
+    margin-bottom: 10px; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-title .meta {
+    color: var(--text-muted); font-weight: 500;
+    text-transform: none; letter-spacing: 0;
+  }
+
+  /* Light badge (shared) */
+  .light-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600;
+    border: 1px solid; white-space: nowrap;
+  }
+  .light-badge .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .light-badge.green { color: var(--green); background: var(--green-bg); border-color: var(--green-soft); }
+  .light-badge.green .dot { background: var(--green); box-shadow: 0 0 6px var(--green-soft); }
+  .light-badge.teal { color: var(--teal); background: var(--teal-bg); border-color: var(--teal-soft); }
+  .light-badge.teal .dot { background: var(--teal); box-shadow: 0 0 6px var(--teal-soft); }
+  .light-badge.red { color: var(--red); background: var(--red-bg); border-color: var(--red-soft); }
+  .light-badge.red .dot { background: var(--red); box-shadow: 0 0 6px var(--red-soft); }
+  .light-badge.orange { color: var(--orange); background: var(--orange-bg); border-color: var(--orange-soft); }
+  .light-badge.orange .dot { background: var(--orange); box-shadow: 0 0 6px var(--orange-soft); }
+  .light-badge.yellow { color: var(--yellow); background: var(--yellow-bg); border-color: var(--yellow-soft); }
+  .light-badge.yellow .dot { background: var(--yellow); box-shadow: 0 0 6px var(--yellow-soft); }
+  .light-badge.gray { color: var(--text-faint); background: var(--gray-bg); border-color: var(--border); }
+  .light-badge.gray .dot { background: var(--gray); }
+  .light-badge.none { color: var(--text-faint); background: transparent; border-color: var(--border-soft); }
+  .light-badge.none .dot { background: transparent; border: 1px dashed var(--text-faint); width: 7px; height: 7px; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    background: var(--gray-bg); color: var(--text);
+    font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border-soft);
+  }
+  .pill.green { background: var(--green-bg); color: var(--green); border-color: var(--green-soft); }
+  .pill.teal { background: var(--teal-bg); color: var(--teal); border-color: var(--teal-soft); }
+  .pill.red { background: var(--red-bg); color: var(--red); border-color: var(--red-soft); }
+  .pill.orange { background: var(--orange-bg); color: var(--orange); border-color: var(--orange-soft); }
+  .pill.yellow { background: var(--yellow-bg); color: var(--yellow); border-color: var(--yellow-soft); }
+
+  /* ========================================================================
+     WATCHLIST VIEW
+     ====================================================================== */
+  .add-card {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .add-card form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .add-card .hint { color: var(--text-faint); font-size: 12px; }
+
+  .taiex-bar {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--card-2); border: 1px solid var(--border);
+    font-size: 12.5px; color: var(--text-muted);
+    margin-left: auto;
+  }
+  .taiex-bar .tx-label { color: var(--text-faint); }
+  .taiex-bar .tx-value { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .taiex-bar.missing { border-color: var(--orange-soft); background: var(--orange-bg); color: var(--orange); }
+  .taiex-bar.missing .tx-label { color: var(--orange); }
+  .taiex-bar.manual { border-color: var(--yellow-soft); background: var(--yellow-bg); color: var(--yellow); }
+  .taiex-bar.manual .tx-label { color: var(--yellow); }
+  .taiex-bar .tx-tag {
+    font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  }
+  .taiex-bar input {
+    width: 90px; padding: 3px 6px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--card); color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .taiex-bar button {
+    padding: 3px 9px; font-size: 12px;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); cursor: pointer;
+  }
+  .taiex-bar button:hover { background: var(--card-2); }
+  .taiex-bar button.ghost-x {
+    border: none; background: transparent; color: var(--text-faint);
+    padding: 0 4px; font-size: 14px;
+  }
+  .taiex-bar button.ghost-x:hover { color: var(--red); background: transparent; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    background: var(--bg-soft);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .empty-state .big { font-size: 32px; margin-bottom: 10px; }
+  .empty-state h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+  .empty-state p { margin: 0; font-size: 13px; }
+
+  .watch-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gray);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 18px 16px;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--text);
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    position: relative;
+    display: flex; flex-direction: column;
+    min-height: 180px;
+  }
+  .watch-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-top-color: var(--card-3);
+    border-right-color: var(--card-3);
+    border-bottom-color: var(--card-3);
+  }
+  .watch-card.green { border-left-color: var(--green); }
+  .watch-card.teal { border-left-color: var(--teal); }
+  .watch-card.red { border-left-color: var(--red); }
+  .watch-card.orange { border-left-color: var(--orange); }
+  .watch-card.yellow { border-left-color: var(--yellow); }
+  .watch-card.empty-card { border-left-color: var(--text-faint); opacity: 0.78; }
+  .watch-card.loading { pointer-events: none; opacity: 0.5; }
+  .watch-card.dragging { opacity: 0.4; }
+  .watch-card.drag-over-before {
+    box-shadow: -3px 0 0 0 var(--accent), var(--shadow);
+  }
+  .watch-card.drag-over-after {
+    box-shadow: 3px 0 0 0 var(--accent), var(--shadow);
+  }
+
+  /* Top row: identity + actions */
+  .wc-row1 {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 8px;
+  }
+  .wc-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+  .wc-num {
+    font-size: 11px; color: var(--text-faint);
+    letter-spacing: 1.2px; font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+  }
+  .wc-name {
+    font-size: 19px; font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+  .wc-industry {
+    font-size: 11px; color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .wc-actions {
+    display: flex; gap: 2px;
+    opacity: 0; transition: opacity 0.15s;
+    margin: -4px -6px 0 0;
+  }
+  .watch-card:hover .wc-actions,
+  .watch-card.empty-card .wc-actions { opacity: 1; }
+  .wc-btn {
+    background: transparent;
+    color: var(--text-faint);
+    border: none;
+    border-radius: 5px;
+    padding: 4px 7px; font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+  .wc-btn:hover { background: var(--card-2); color: var(--text); }
+  .wc-btn.danger:hover { color: var(--red); background: var(--red-bg); }
+
+  /* Price block (most prominent) */
+  .wc-price {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-top: 14px;
+  }
+  .wc-close {
+    font-size: 28px; font-weight: 700;
+    letter-spacing: 0.3px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  .wc-change {
+    font-size: 14px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .wc-change.up { color: var(--price-up); }
+  .wc-change.down { color: var(--price-down); }
+  .wc-asof {
+    margin-left: auto; color: var(--text-faint);
+    font-size: 11px; align-self: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Signal row */
+  .wc-signal {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .wc-label {
+    font-size: 14.5px; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 8px;
+    letter-spacing: 0.3px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+  }
+  .wc-label .signal-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--gray);
+  }
+  .wc-label.green { color: var(--green); background: var(--green-bg); border-color: var(--green-soft); }
+  .wc-label.green .signal-dot { background: var(--green); box-shadow: 0 0 8px var(--green-soft); }
+  .wc-label.red { color: var(--red); background: var(--red-bg); border-color: var(--red-soft); }
+  .wc-label.red .signal-dot { background: var(--red); box-shadow: 0 0 8px var(--red-soft); }
+  .wc-label.orange { color: var(--orange); background: var(--orange-bg); border-color: var(--orange-soft); }
+  .wc-label.orange .signal-dot { background: var(--orange); box-shadow: 0 0 8px var(--orange-soft); }
+  .wc-label.yellow { color: var(--yellow); background: var(--yellow-bg); border-color: var(--yellow-soft); }
+  .wc-label.yellow .signal-dot { background: var(--yellow); box-shadow: 0 0 8px var(--yellow-soft); }
+  .wc-label.gray { color: var(--text-faint); }
+  .wc-score-text {
+    font-size: 11px; color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* Step lights row (subtle indicator) — now inline with overall light */
+  .step-lights {
+    display: flex; gap: 5px; align-items: center;
+    margin-left: auto;
+  }
+  .step-lights .step-light {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--gray);
+    flex-shrink: 0;
+    opacity: 0.85;
+  }
+  .step-lights .step-light.green { background: var(--green); }
+  .step-lights .step-light.red { background: var(--red); }
+  .step-lights .step-light.orange { background: var(--orange); }
+  .step-lights .step-light.yellow { background: var(--yellow); }
+  .step-lights .step-light.gray { background: var(--gray); opacity: 0.5; }
+  .step-lights .step-light.none {
+    background: transparent;
+    border: 1px dashed var(--text-faint);
+    width: 6px; height: 6px;
+  }
+
+  /* Empty card content */
+  .wc-empty-msg {
+    color: var(--text-faint); font-size: 12.5px;
+    margin-top: auto; padding: 14px 0 4px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  /* ========================================================================
+     DETAIL VIEW
+     ====================================================================== */
+  .hero {
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px;
+    margin-bottom: 16px;
+  }
+  .hero-overall {
+    border-left: 4px solid var(--gray);
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative; overflow: hidden;
+  }
+  .hero-overall::after {
+    content: ''; position: absolute; right: -50px; top: -50px;
+    width: 220px; height: 220px; border-radius: 50%;
+    opacity: 0.07; background: var(--gray); pointer-events: none;
+  }
+  .hero-overall.green { border-left-color: var(--green); }
+  .hero-overall.green::after { background: var(--green); }
+  .hero-overall.teal { border-left-color: var(--teal); }
+  .hero-overall.teal::after { background: var(--teal); }
+  .hero-overall.red { border-left-color: var(--red); }
+  .hero-overall.red::after { background: var(--red); }
+  .hero-overall.orange { border-left-color: var(--orange); }
+  .hero-overall.orange::after { background: var(--orange); }
+  .hero-overall.yellow { border-left-color: var(--yellow); }
+  .hero-overall.yellow::after { background: var(--yellow); }
+
+  .hero-overall .label-line {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 28px; font-weight: 700; letter-spacing: 1px;
+    margin-top: 4px;
+  }
+  .hero-overall.green .label-line { color: var(--green); }
+  .hero-overall.teal .label-line { color: var(--teal); }
+  .hero-overall.red .label-line { color: var(--red); }
+  .hero-overall.orange .label-line { color: var(--orange); }
+  .hero-overall.yellow .label-line { color: var(--yellow); }
+  .hero-overall .score-line {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px;
+    font-size: 13px; color: var(--text-muted);
+  }
+  .hero-overall .overall-history {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 10px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .hero-overall .overall-history .oh-label {
+    color: var(--text-faint); letter-spacing: 0.4px;
+  }
+  .hero-overall .overall-history .history-strip .h-dot {
+    width: 12px; height: 12px; border-radius: 3px;
+  }
+  .hero-overall .overall-rules {
+    margin-top: 10px; font-size: 12.5px; color: var(--text-muted);
+  }
+  .hero-overall .overall-rules summary {
+    cursor: pointer; user-select: none; padding: 4px 0;
+    color: var(--text); font-weight: 600;
+  }
+  .hero-overall .overall-rules summary:hover { color: var(--green); }
+  .hero-overall .overall-rules ol {
+    margin: 6px 0 4px 18px; padding: 0; line-height: 1.7;
+  }
+  .hero-overall .overall-rules ol li { margin-bottom: 2px; }
+  .hero-overall .overall-rules .rules-note {
+    margin: 6px 0 0 0; padding-top: 6px;
+    border-top: 1px dashed var(--border, #ddd);
+    font-size: 11.5px; line-height: 1.55;
+  }
+
+  .hero-price { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+  .hero-price .row1 { display: flex; align-items: baseline; gap: 12px; }
+  .hero-price .close {
+    font-size: 36px; font-weight: 700; letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-price .change {
+    font-size: 18px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-price .change.up { color: var(--price-up); }
+  .hero-price .change.down { color: var(--price-down); }
+  .hero-price .meta-line { color: var(--text-muted); font-size: 12.5px; display: flex; gap: 12px; }
+
+  /* 7-step table */
+  .steps-card { padding: 14px 0 0; overflow: hidden; }
+  .steps-card .card-title { padding: 0 18px; }
+  .steps-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  .steps-table th {
+    text-align: left; color: var(--text-faint);
+    font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-soft);
+  }
+  .steps-table td {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: middle;
+  }
+  .steps-table tr:last-child td { border-bottom: none; }
+  .steps-table .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--card-2); color: var(--text-muted);
+    font-size: 12px; font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  .steps-table .title-cell { font-weight: 600; color: var(--text); white-space: nowrap; }
+  .steps-table .cond-cell { color: var(--text-muted); font-size: 12.5px; white-space: pre-line; }
+  .steps-table .light-cell { white-space: nowrap; padding-right: 4px !important; }
+  .history-cell { padding: 10px 14px 10px 4px !important; }
+  .history-strip {
+    display: inline-flex; gap: 3px; align-items: center;
+  }
+  .history-strip .h-dot {
+    width: 9px; height: 9px; border-radius: 2px;
+    background: var(--gray); opacity: 0.85;
+    flex-shrink: 0;
+  }
+  .history-strip .h-dot.green { background: var(--green); }
+  .history-strip .h-dot.teal { background: var(--teal); }
+  .history-strip .h-dot.red { background: var(--red); }
+  .history-strip .h-dot.orange { background: var(--orange); }
+  .history-strip .h-dot.yellow { background: var(--yellow); }
+  .history-strip .h-dot.gray { background: var(--gray); opacity: 0.4; }
+  .history-strip .h-dot.today {
+    outline: 1.5px solid var(--text);
+    outline-offset: 1px;
+  }
+  .history-strip-empty { color: var(--text-faint); font-size: 11px; }
+  .steps-table .detail-cell {
+    color: var(--text-muted); font-size: 12px;
+    font-variant-numeric: tabular-nums; line-height: 1.6;
+  }
+
+  .two-col {
+    display: grid; grid-template-columns: 1.3fr 1fr;
+    gap: 14px; margin: 16px 0;
+  }
+  @media (max-width: 900px) {
+    .two-col { grid-template-columns: 1fr; }
+    .hero { grid-template-columns: 1fr; }
+  }
+
+  .mini-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .mini-table th {
+    text-align: left; padding: 8px 12px;
+    color: var(--text-faint); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .mini-table th.num { text-align: right; }
+  .mini-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-table tr:last-child td { border-bottom: none; }
+  .mini-table td.num { text-align: right; }
+  .mini-table td.note { color: var(--text-muted); font-size: 12px; }
+  .mini-table .name-cell { font-weight: 500; }
+  .mini-table td.up { color: var(--price-up); }
+  .mini-table td.down { color: var(--price-down); }
+  .zones-note { color: var(--text-muted); font-size: 12.5px; padding: 6px 0 12px; line-height: 1.6; }
+
+  /* Charts */
+  .charts {
+    display: grid; grid-template-columns: 1fr; gap: 14px;
+    margin-bottom: 16px;
+  }
+  @media (min-width: 960px) {
+    .charts { grid-template-columns: 1fr 1fr; }
+    .charts .full { grid-column: 1 / -1; }
+  }
+  .chart-card canvas { max-height: 280px; }
+
+  /* Data table */
+  .table-card { padding: 0; overflow: hidden; }
+  .table-card .card-title { padding: 14px 18px 8px; margin-bottom: 0; }
+  .table-wrap { overflow-x: auto; max-height: 540px; overflow-y: auto; }
+  .data-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .data-table thead th {
+    position: sticky; top: 0;
+    background: var(--card-2);
+    color: var(--text-muted);
+    font-weight: 600; text-align: right;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap; z-index: 1;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .data-table thead th:first-child { text-align: left; }
+  .data-table tbody td {
+    padding: 6px 12px; text-align: right;
+    border-bottom: 1px solid var(--border-soft);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap; color: var(--text);
+  }
+  .data-table tbody td:first-child { text-align: left; color: var(--text-muted); font-size: 12px; }
+  .data-table tbody tr:hover { background: rgba(91, 141, 255, 0.05); }
+  .data-table td.up { color: var(--price-up); font-weight: 500; }
+  .data-table td.down { color: var(--price-down); font-weight: 500; }
+
+  /* Loading */
+  .spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid rgba(91, 141, 255, 0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #2c3550; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3d4868; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="header">
+    <h1>
+      <span class="dot"></span>
+      <a href="#/" id="homeLink" style="color:inherit;text-decoration:none;">TWSE 個股技術分析</a>
+      <span class="crumb" id="crumb" hidden></span>
+    </h1>
+    <div class="header-actions" id="headerActions">
+      <!-- populated per view -->
+    </div>
+  </header>
+
+  <div class="status" id="status"></div>
+
+  <!-- ========================================================================
+       WATCHLIST VIEW
+       ===================================================================== -->
+  <section id="watchlistView" hidden>
+    <div class="card add-card">
+      <form id="addForm">
+        <input id="newCode" placeholder="輸入股號" maxlength="6" required>
+        <button type="submit">加入清單</button>
+      </form>
+      <span class="hint">首次抓取需 30-60 秒(TWSE 限速)</span>
+      <span id="taiexBar" class="taiex-bar" hidden></span>
+    </div>
+    <div class="grid" id="watchlistGrid"></div>
+  </section>
+
+  <!-- ========================================================================
+       DETAIL VIEW
+       ===================================================================== -->
+  <section id="detailView" hidden>
+    <section class="hero" id="hero" hidden>
+      <div class="card hero-overall" id="overall">
+        <div class="card-title">
+          <span>總燈號</span>
+          <span class="meta" id="asOf"></span>
+        </div>
+        <div class="label-line" id="overallLabel">—</div>
+        <div class="score-line" id="overallScore"></div>
+        <div class="overall-history" id="overallHistory" hidden>
+          <span class="oh-label">10 日趨勢</span>
+          <span class="history-strip" id="overallHistoryStrip"></span>
+        </div>
+        <details class="overall-rules">
+          <summary>判定規則</summary>
+          <ol>
+            <li><b>🟢 強進場</b>:Step 1 綠 + Step 1~4 全綠 + Step 6 非紅 + Step 7 非紅</li>
+            <li><b>🟢 次強進場</b>:Step 1 綠 + Step 1~4 ≥3 綠 + Step 6 非紅 + Step 7 非紅</li>
+            <li><b>🔴 出場</b>:Step 6 出場警示紅</li>
+            <li><b>🟠 觀望</b>:全 7 步紅燈 ≥2</li>
+            <li><b>🟡 等待</b>:其餘情況</li>
+          </ol>
+          <p class="rules-note">
+            Step 1 大盤為強制閘門,未綠則最高僅黃燈。<br>
+            Step 6 出場警示為一票否決,紅燈直接覆蓋進場分數。<br>
+            Step 7 法人認養為軟否決,紅燈不會直接觸發紅,但會擋住「強/次強進場」升級。<br>
+            Step 5 持有不參與進場升級或單獨否決,但其紅燈會計入「紅燈 ≥2 → 觀望」總數。
+          </p>
+        </details>
+      </div>
+      <div class="card hero-price">
+        <div class="card-title"><span>當日價量</span><span class="meta" id="priceCode"></span></div>
+        <div class="row1">
+          <div class="close" id="priceClose">—</div>
+          <div class="change" id="priceChange">—</div>
+        </div>
+        <div class="meta-line" id="priceMeta"></div>
+      </div>
+    </section>
+
+    <section class="card steps-card" id="stepsCard" hidden>
+      <div class="card-title">燈號儀表板 7 步驟</div>
+      <table class="steps-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;">#</th>
+            <th>步驟</th>
+            <th>條件</th>
+            <th style="width: 130px;">燈號</th>
+            <th style="width: 140px;">10 日歷史</th>
+            <th>細節</th>
+          </tr>
+        </thead>
+        <tbody id="stepsBody"></tbody>
+      </table>
+    </section>
+
+    <section class="two-col" id="twoCol" hidden>
+      <div class="card">
+        <div class="card-title">隔日參考價位</div>
+        <div class="zones-note" id="zonesNote"></div>
+        <table class="mini-table" id="zonesTable">
+          <thead>
+            <tr><th>區間</th><th>技術依據</th><th class="num">下緣</th><th class="num">上緣</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">距離預警</div>
+        <table class="mini-table" id="distTable">
+          <thead>
+            <tr><th>目標</th><th class="num">目標價</th><th class="num">距現價</th><th>說明</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="charts" id="charts" hidden>
+      <div class="card chart-card full">
+        <div class="card-title">收盤價 + MA5 / MA10 / MA20</div>
+        <canvas id="priceChart"></canvas>
+      </div>
+      <div class="card chart-card">
+        <div class="card-title">KD (9, 3, 3)</div>
+        <canvas id="kdChart"></canvas>
+      </div>
+      <div class="card chart-card">
+        <div class="card-title">MACD-OSC (Histogram)</div>
+        <canvas id="macdChart"></canvas>
+      </div>
+    </section>
+
+    <section class="card table-card" id="tableCard" hidden>
+      <div class="card-title">明細資料</div>
+      <div class="table-wrap"><table class="data-table" id="tbl"></table></div>
+    </section>
+  </section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const charts = {};
+
+const STEP_NAMES = ["大盤", "趨勢", "動能", "量能", "持有", "出場", "法人"];
+const HEADERS = [
+  ["date", "Date"], ["taiex", "TAIEX"], ["high", "High"], ["low", "Low"],
+  ["close", "Close"], ["lots", "Volume"], ["change_pct", "Change %"],
+  ["ma5", "MA5"], ["ma10", "MA10"], ["ma20", "MA20"],
+  ["rsi6", "RSI(6)"], ["rsi12", "RSI(12)"],
+  ["kd_k", "K"], ["kd_d", "D"], ["macd_osc", "MACD-OSC"],
+];
+
+function fmt(v, d = 2) { return v == null ? "" : Number(v).toFixed(d); }
+function fmtInt(v) { return v == null ? "" : Number(v).toLocaleString(); }
+function fmtSigned(v, d = 2) {
+  if (v == null) return "";
+  return (v >= 0 ? "+" : "") + Number(v).toFixed(d);
+}
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function setStatus(msg, isError = false, loading = false) {
+  const s = document.getElementById("status");
+  s.classList.toggle("error", isError);
+  s.innerHTML = (loading ? '<span class="spinner"></span>' : "") + msg;
+}
+function lightBadge(light) {
+  const map = { green: "🟢", red: "🔴", orange: "🟠", yellow: "🟡", gray: "⚪", none: "—" };
+  return `<span class="light-badge ${light}"><span class="dot"></span>${map[light] || "⚪"}</span>`;
+}
+
+/* ============================================================
+   ROUTER
+   ============================================================ */
+function route() {
+  const hash = window.location.hash || "#/";
+  const m = hash.match(/^#\/stock\/(\w+)$/);
+  if (m) {
+    showDetail(m[1]);
+  } else {
+    showWatchlist();
+  }
+}
+
+function showWatchlist() {
+  document.getElementById("watchlistView").hidden = false;
+  document.getElementById("detailView").hidden = true;
+  document.getElementById("crumb").hidden = true;
+  const sortMode = localStorage.getItem("watchSortMode") || "manual";
+  document.getElementById("headerActions").innerHTML = `
+    <div class="field">排序
+      <select id="sortMode">
+        <option value="manual"${sortMode === "manual" ? " selected" : ""}>手動</option>
+        <option value="industry"${sortMode === "industry" ? " selected" : ""}>產業</option>
+        <option value="code"${sortMode === "code" ? " selected" : ""}>股號</option>
+      </select>
+    </div>
+    <button class="ghost" id="refreshAllBtn">⟳ 全部更新</button>
+  `;
+  document.getElementById("refreshAllBtn").addEventListener("click", refreshAll);
+  document.getElementById("sortMode").addEventListener("change", (e) => {
+    localStorage.setItem("watchSortMode", e.target.value);
+    if (_watchItems) renderWatchlist(_watchItems);
+  });
+  loadWatchlist();
+}
+
+function showDetail(code) {
+  document.getElementById("watchlistView").hidden = true;
+  document.getElementById("detailView").hidden = false;
+  const crumb = document.getElementById("crumb");
+  crumb.hidden = false;
+  crumb.textContent = code;
+  renderDetailHeader(code);
+  loadStock(code);
+  // If watchlist not yet loaded (direct URL entry), fetch to enable nav buttons
+  if (!_watchItems) {
+    fetch("/api/watchlist").then(r => r.json()).then(data => {
+      _watchItems = data.items;
+      renderDetailHeader(code);
+    }).catch(() => {});
+  }
+}
+
+function getNavCodes(code) {
+  if (!_watchItems || _watchItems.length === 0) return { prev: null, next: null };
+  const sorted = sortWatchItems(_watchItems, getSortMode());
+  const idx = sorted.findIndex(it => it.code === code);
+  if (idx === -1) return { prev: null, next: null };
+  return {
+    prev: idx > 0 ? sorted[idx - 1].code : null,
+    next: idx < sorted.length - 1 ? sorted[idx + 1].code : null,
+  };
+}
+
+function renderDetailHeader(code) {
+  const { prev, next } = getNavCodes(code);
+  const prevAttr = prev ? `onclick="window.location.hash='#/stock/${prev}'"` : "disabled";
+  const nextAttr = next ? `onclick="window.location.hash='#/stock/${next}'"` : "disabled";
+  const prevTitle = prev ? `上一檔 ${prev}` : "已是第一檔";
+  const nextTitle = next ? `下一檔 ${next}` : "已是最後一檔";
+  document.getElementById("headerActions").innerHTML = `
+    <div class="field">天數 <input id="rows" type="number" value="30" min="5" max="200"></div>
+    <button class="ghost" id="refreshDetailBtn">⟳ 重新抓取</button>
+    <button class="ghost" onclick="window.location.hash='#/'">返回清單</button>
+    <button class="ghost" ${prevAttr} title="${prevTitle}">上一檔</button>
+    <button class="ghost" ${nextAttr} title="${nextTitle}">下一檔</button>
+  `;
+  document.getElementById("refreshDetailBtn").addEventListener("click", () => refreshDetail(code));
+  document.getElementById("rows").addEventListener("change", () => loadStock(code));
+}
+
+window.addEventListener("hashchange", route);
+
+/* ============================================================
+   WATCHLIST
+   ============================================================ */
+let _watchItems = null;
+
+async function loadWatchlist() {
+  setStatus("載入監控清單...", false, true);
+  loadTaiexBar();
+  try {
+    const res = await fetch("/api/watchlist");
+    const data = await res.json();
+    _watchItems = data.items;
+    renderWatchlist(_watchItems);
+    const cached = _watchItems.filter(it => it.cached).length;
+    const total = _watchItems.length;
+    setStatus(total === 0
+      ? "尚未加入任何股票"
+      : `<strong>${total}</strong> 檔股票 · 今日已抓取 <strong>${cached}</strong> 檔`);
+  } catch (e) {
+    setStatus(`錯誤:${e.message}`, true);
+  }
+}
+
+async function loadTaiexBar() {
+  const bar = document.getElementById("taiexBar");
+  if (!bar) return;
+  try {
+    const res = await fetch("/api/taiex/today");
+    const data = await res.json();
+    renderTaiexBar(data);
+  } catch (e) {
+    bar.hidden = true;
+  }
+}
+
+function renderTaiexBar(data) {
+  const bar = document.getElementById("taiexBar");
+  if (!bar) return;
+  bar.hidden = false;
+  bar.classList.remove("missing", "manual");
+  const fmt = v => v == null ? "—" : Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (data.source === "auto") {
+    bar.innerHTML = `<span class="tx-label">今日大盤</span><span class="tx-value">${fmt(data.close)}</span>`;
+  } else if (data.source === "manual") {
+    bar.classList.add("manual");
+    bar.innerHTML = `
+      <span class="tx-label">今日大盤</span>
+      <span class="tx-value">${fmt(data.close)}</span>
+      <span class="tx-tag">手動</span>
+      <button type="button" class="ghost-x" id="taiexClearBtn" title="清除手動值">✕</button>
+    `;
+    document.getElementById("taiexClearBtn").addEventListener("click", clearManualTaiex);
+  } else {
+    bar.classList.add("missing");
+    bar.innerHTML = `
+      <span class="tx-label">今日大盤缺資料</span>
+      <input type="number" id="taiexInput" placeholder="收盤點數" step="0.01" min="1">
+      <button type="button" id="taiexSaveBtn">暫存</button>
+    `;
+    document.getElementById("taiexSaveBtn").addEventListener("click", submitManualTaiex);
+    document.getElementById("taiexInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submitManualTaiex();
+    });
+  }
+}
+
+async function submitManualTaiex() {
+  const input = document.getElementById("taiexInput");
+  if (!input) return;
+  const v = parseFloat(input.value);
+  if (!Number.isFinite(v) || v <= 0) {
+    input.focus();
+    return;
+  }
+  const btn = document.getElementById("taiexSaveBtn");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/taiex/today", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ close: v }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadWatchlist();
+  } catch (e) {
+    alert(`儲存失敗:${e.message}`);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function clearManualTaiex() {
+  if (!confirm("清除手動大盤值?")) return;
+  try {
+    await fetch("/api/taiex/today", { method: "DELETE" });
+    await loadWatchlist();
+  } catch (e) {
+    alert(`清除失敗:${e.message}`);
+  }
+}
+
+function getSortMode() {
+  return localStorage.getItem("watchSortMode") || "manual";
+}
+
+function sortWatchItems(items, mode) {
+  if (mode === "manual") return items;
+  const arr = [...items];
+  if (mode === "code") {
+    arr.sort((a, b) => a.code.localeCompare(b.code));
+  } else if (mode === "industry") {
+    arr.sort((a, b) => {
+      const ai = a.industry || "";
+      const bi = b.industry || "";
+      // Empty industries sink to the bottom
+      if (!ai && bi) return 1;
+      if (ai && !bi) return -1;
+      const c = ai.localeCompare(bi, "zh-Hant");
+      return c !== 0 ? c : a.code.localeCompare(b.code);
+    });
+  }
+  return arr;
+}
+
+function renderWatchlist(items) {
+  const grid = document.getElementById("watchlistGrid");
+  if (!items || items.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <div class="big">📊</div>
+        <h3>監控清單是空的</h3>
+        <p>輸入股號(如 2330)加入清單,即可看到燈號儀表板</p>
+      </div>`;
+    return;
+  }
+  const mode = getSortMode();
+  const sorted = sortWatchItems(items, mode);
+  grid.dataset.sortMode = mode;
+  grid.innerHTML = sorted.map(renderWatchCard).join("");
+  // Wire up actions
+  grid.querySelectorAll("[data-action]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const code = btn.dataset.code;
+      const action = btn.dataset.action;
+      if (action === "refresh") refreshOne(code);
+      else if (action === "delete") deleteOne(code);
+    });
+  });
+  wireDragAndDrop(grid);
+}
+
+let _dragSrcCode = null;
+let _dragMoved = false;
+
+function wireDragAndDrop(grid) {
+  const dragEnabled = getSortMode() === "manual";
+  grid.querySelectorAll(".watch-card").forEach(card => {
+    if (!dragEnabled) {
+      card.removeAttribute("draggable");
+      return;
+    }
+    card.addEventListener("dragstart", (e) => {
+      _dragSrcCode = card.dataset.cardCode;
+      _dragMoved = false;
+      card.classList.add("dragging");
+      try {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", _dragSrcCode);
+      } catch {}
+    });
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+      grid.querySelectorAll(".watch-card").forEach(c =>
+        c.classList.remove("drag-over-before", "drag-over-after"));
+      _dragSrcCode = null;
+    });
+    card.addEventListener("dragover", (e) => {
+      if (!_dragSrcCode || card.dataset.cardCode === _dragSrcCode) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const rect = card.getBoundingClientRect();
+      const before = (e.clientX - rect.left) < rect.width / 2;
+      card.classList.toggle("drag-over-before", before);
+      card.classList.toggle("drag-over-after", !before);
+    });
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("drag-over-before", "drag-over-after");
+    });
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const srcCode = _dragSrcCode;
+      const dstCode = card.dataset.cardCode;
+      card.classList.remove("drag-over-before", "drag-over-after");
+      if (!srcCode || srcCode === dstCode) return;
+      const rect = card.getBoundingClientRect();
+      const before = (e.clientX - rect.left) < rect.width / 2;
+      const src = grid.querySelector(`[data-card-code="${srcCode}"]`);
+      if (!src) return;
+      if (before) card.parentNode.insertBefore(src, card);
+      else card.parentNode.insertBefore(src, card.nextSibling);
+      _dragMoved = true;
+      persistOrder(grid);
+    });
+    // Prevent the link from following when a drag actually happened.
+    card.addEventListener("click", (e) => {
+      if (_dragMoved) {
+        e.preventDefault();
+        _dragMoved = false;
+      }
+    });
+  });
+}
+
+async function persistOrder(grid) {
+  const codes = [...grid.querySelectorAll(".watch-card")]
+    .map(c => c.dataset.cardCode);
+  try {
+    await fetch("/api/watchlist/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codes }),
+    });
+  } catch (e) {
+    setStatus(`排序儲存失敗:${e.message}`, true);
+  }
+}
+
+function renderIdBlock(item) {
+  const code = escapeHtml(item.code);
+  const name = escapeHtml(item.short_name || "");
+  const industry = escapeHtml(item.industry || "");
+  return `
+    <div class="wc-id">
+      <span class="wc-num">${code}</span>
+      <span class="wc-name">${name || code}</span>
+      ${industry ? `<span class="wc-industry">${industry}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderWatchActions(code) {
+  return `
+    <div class="wc-actions">
+      <button class="wc-btn" data-action="refresh" data-code="${code}" title="重新抓取">⟳</button>
+      <button class="wc-btn danger" data-action="delete" data-code="${code}" title="從清單移除">✕</button>
+    </div>
+  `;
+}
+
+function renderWatchCard(item) {
+  const code = escapeHtml(item.code);
+  if (!item.cached) {
+    return `
+      <a class="watch-card empty-card" href="#/stock/${code}" data-card-code="${code}" draggable="true">
+        <div class="wc-row1">
+          ${renderIdBlock(item)}
+          ${renderWatchActions(code)}
+        </div>
+        <div class="wc-empty-msg">尚未抓取今日資料<br>點此進入或按 ⟳ 立即抓取</div>
+      </a>`;
+  }
+  const sm = item.summary || { light: "gray", label: "—", passed: 0, warning: 0, danger: 0 };
+  const chg = item.change_pct;
+  const chgCls = chg == null ? "" : chg > 0 ? "up" : chg < 0 ? "down" : "";
+  const lights = (item.step_lights || []).map((light, i) =>
+    `<span class="step-light ${light}" title="${i + 1}. ${STEP_NAMES[i]}"></span>`
+  ).join("");
+  // Format date as MM/DD for compactness
+  const asOf = item.as_of ? item.as_of.slice(5).replace("-", "/") : "";
+  return `
+    <a class="watch-card ${sm.light}" href="#/stock/${code}" data-card-code="${code}" draggable="true">
+      <div class="wc-row1">
+        ${renderIdBlock(item)}
+        ${renderWatchActions(code)}
+      </div>
+      <div class="wc-price">
+        <span class="wc-close">${fmt(item.close)}</span>
+        <span class="wc-change ${chgCls}">${fmtSigned(chg)}%</span>
+        <span class="wc-asof">${asOf}</span>
+      </div>
+      <div class="wc-signal">
+        <span class="wc-label ${sm.light}">
+          <span class="signal-dot"></span>${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}⚪]\s*/u, ""))}
+        </span>
+        <span class="step-lights" title="${sm.passed}/${sm.total || 8} 通過${sm.danger ? ` · ${sm.danger} 危險` : ""}">${lights}</span>
+      </div>
+    </a>`;
+}
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "addForm") return;
+  e.preventDefault();
+  const input = document.getElementById("newCode");
+  const code = input.value.trim();
+  if (!/^\d{4,6}$/.test(code)) {
+    setStatus("股號需為 4-6 位數字", true);
+    return;
+  }
+  setStatus(`加入 ${code} 中...`, false, true);
+  try {
+    const res = await fetch(`/api/watchlist/${code}`, { method: "PUT" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setStatus(`錯誤:${err.detail || res.statusText}`, true);
+      return;
+    }
+    input.value = "";
+    await loadWatchlist();
+  } catch (e) {
+    setStatus(`錯誤:${e.message}`, true);
+  }
+});
+
+async function deleteOne(code) {
+  if (!confirm(`確定要從監控清單移除 ${code}?`)) return;
+  setStatus(`移除 ${code}...`, false, true);
+  try {
+    await fetch(`/api/watchlist/${code}`, { method: "DELETE" });
+    await loadWatchlist();
+  } catch (e) {
+    setStatus(`錯誤:${e.message}`, true);
+  }
+}
+
+async function refreshOne(code) {
+  const card = document.querySelector(`[data-card-code="${code}"]`);
+  if (card) card.classList.add("loading");
+  setStatus(`重新抓取 ${code}...(約 30-60 秒)`, false, true);
+  try {
+    const res = await fetch(`/api/watchlist/${code}/refresh`, { method: "POST" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setStatus(`錯誤:${err.detail || res.statusText}`, true);
+      return;
+    }
+    await loadWatchlist();
+  } catch (e) {
+    setStatus(`錯誤:${e.message}`, true);
+  }
+}
+
+async function refreshAll() {
+  const res = await fetch("/api/watchlist");
+  const data = await res.json();
+  const codes = (data.items || []).map(it => it.code);
+  if (codes.length === 0) {
+    setStatus("清單為空", true);
+    return;
+  }
+  document.getElementById("refreshAllBtn").disabled = true;
+  for (let i = 0; i < codes.length; i++) {
+    setStatus(`更新 ${i + 1}/${codes.length}: ${codes[i]}...`, false, true);
+    try {
+      await fetch(`/api/watchlist/${codes[i]}/refresh`, { method: "POST" });
+    } catch {}
+  }
+  document.getElementById("refreshAllBtn").disabled = false;
+  await loadWatchlist();
+}
+
+/* ============================================================
+   DETAIL
+   ============================================================ */
+async function refreshDetail(code) {
+  setStatus(`重新抓取 ${code}...`, false, true);
+  try {
+    await fetch(`/api/watchlist/${code}/refresh`, { method: "POST" });
+    await loadStock(code);
+  } catch (e) {
+    setStatus(`錯誤:${e.message}`, true);
+  }
+}
+
+async function loadStock(code) {
+  const rowsInput = document.getElementById("rows");
+  const rows = rowsInput ? (rowsInput.value || 30) : 30;
+  setStatus(`查詢 ${code} 中...(首次抓取 TWSE 約 30-60 秒,同股號當天從快取讀取)`, false, true);
+  try {
+    const res = await fetch(`/api/stock/${encodeURIComponent(code)}?rows=${rows}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      setStatus(`錯誤:${err.detail || res.statusText}`, true);
+      return;
+    }
+    const data = await res.json();
+    if (!data.rows || data.rows.length === 0) {
+      setStatus(`${code} 無資料`, true);
+      return;
+    }
+    const last = data.rows[data.rows.length - 1];
+    setStatus(`<strong>${code}</strong> · ${data.rows.length} 筆 · 最新 ${last.date} 收盤 ${fmt(last.close)} (${fmtSigned(last.change_pct)}%)`);
+    document.getElementById("hero").hidden = false;
+    document.getElementById("stepsCard").hidden = false;
+    document.getElementById("twoCol").hidden = false;
+    document.getElementById("charts").hidden = false;
+    document.getElementById("tableCard").hidden = false;
+
+    renderHero(data.dashboard, last, data.code, data.info);
+    renderOverallHistory(data.dashboard.history || []);
+    if (data.info && data.info.short_name) {
+      const crumb = document.getElementById("crumb");
+      const ind = data.info.industry
+        ? `<span class="c-industry">${escapeHtml(data.info.industry)}</span>` : "";
+      crumb.innerHTML =
+        `<span class="c-code">${escapeHtml(data.code)}</span>` +
+        `<span class="c-name">${escapeHtml(data.info.short_name)}</span>` + ind;
+    }
+    renderSteps(data.dashboard.steps || [], data.dashboard.history || []);
+    renderZones(data.dashboard.price_zones || { mode: "wait", zones: [], note: "" });
+    renderDistance(data.dashboard.distance || []);
+    renderCharts(data.rows);
+    renderTable(data.rows);
+  } catch (e) {
+    setStatus(`錯誤:${e.message}`, true);
+  }
+}
+
+function renderHero(dashboard, lastRow, code, info) {
+  const overall = document.getElementById("overall");
+  overall.classList.remove("green", "teal", "red", "orange", "yellow");
+  if (dashboard.summary) {
+    overall.classList.add(dashboard.summary.light);
+    document.getElementById("overallLabel").textContent = dashboard.summary.label;
+    const sm = dashboard.summary;
+    document.getElementById("overallScore").innerHTML = `
+      <span class="pill green">通過 ${sm.passed}</span>
+      <span class="pill yellow">警示 ${sm.warning}</span>
+      <span class="pill red">危險 ${sm.danger}</span>
+      <span style="color:var(--text-faint);margin-left:auto;align-self:center;">/ ${sm.total || 8} 步驟</span>
+    `;
+  }
+  document.getElementById("asOf").textContent = dashboard.as_of
+    ? `基於 ${dashboard.as_of} 收盤` : "";
+  const codeLabel = info && info.short_name
+    ? `${code} ${info.short_name}${info.industry ? "  ·  " + info.industry : ""}`
+    : code;
+  document.getElementById("priceCode").textContent = codeLabel;
+  document.getElementById("priceClose").textContent = fmt(lastRow.close);
+  const chg = lastRow.change_pct;
+  const ce = document.getElementById("priceChange");
+  ce.classList.remove("up", "down");
+  if (chg != null) {
+    ce.classList.add(chg > 0 ? "up" : chg < 0 ? "down" : "");
+    ce.textContent = `${fmtSigned(chg)}%`;
+  } else { ce.textContent = ""; }
+  const sigmaTxt = dashboard.sigma != null
+    ? `σ=${(dashboard.sigma * 100).toFixed(2)}%` : "";
+  document.getElementById("priceMeta").innerHTML = `
+    <span>最高 ${fmt(lastRow.high)} / 最低 ${fmt(lastRow.low)}</span>
+    <span>量 ${fmtInt(lastRow.lots)} 張</span>
+    ${sigmaTxt ? `<span>${sigmaTxt}</span>` : ""}
+  `;
+}
+
+function renderOverallHistory(history) {
+  const wrap = document.getElementById("overallHistory");
+  const strip = document.getElementById("overallHistoryStrip");
+  if (!history || history.length === 0) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const lastIdx = history.length - 1;
+  strip.innerHTML = history.map((h, i) => {
+    const light = h.overall || "gray";
+    const today = i === lastIdx ? " today" : "";
+    const label = (h.overall_label || "").replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}⚪]\s*/u, "");
+    const tip = `${h.date}${label ? "  " + label : ""}`;
+    return `<span class="h-dot ${light}${today}" title="${escapeHtml(tip)}"></span>`;
+  }).join("");
+}
+
+function renderSteps(steps, history) {
+  const body = document.getElementById("stepsBody");
+  const lastIdx = history.length - 1;
+  body.innerHTML = steps.map((s, stepIdx) => {
+    const strip = history.length === 0
+      ? `<span class="history-strip-empty">—</span>`
+      : `<span class="history-strip">` +
+        history.map((h, i) => {
+          const light = (h.lights && h.lights[stepIdx]) || "gray";
+          const today = i === lastIdx ? " today" : "";
+          return `<span class="h-dot ${light}${today}" title="${escapeHtml(h.date)}"></span>`;
+        }).join("") +
+        `</span>`;
+    return `
+    <tr>
+      <td><span class="step-num">${s.step}</span></td>
+      <td class="title-cell">${escapeHtml(s.title)}</td>
+      <td class="cond-cell">${escapeHtml(s.condition)}</td>
+      <td class="light-cell">${lightBadge(s.light)}</td>
+      <td class="history-cell">${strip}</td>
+      <td class="detail-cell">${escapeHtml(s.detail || "")}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderZones(zones) {
+  document.getElementById("zonesNote").textContent = zones.note || "";
+  const tbody = document.querySelector("#zonesTable tbody");
+  if (!zones.zones || zones.zones.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="note" style="text-align:center;padding:18px;">—</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = zones.zones.map(z => `
+    <tr>
+      <td class="name-cell">${escapeHtml(z.name)}</td>
+      <td class="note">${escapeHtml(z.basis)}</td>
+      <td class="num">${z.low ?? "—"}</td>
+      <td class="num">${z.high ?? "—"}</td>
+    </tr>
+  `).join("");
+}
+
+function renderDistance(dist) {
+  const tbody = document.querySelector("#distTable tbody");
+  if (!dist || dist.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="note" style="text-align:center;padding:18px;">—</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = dist.map(d => {
+    const dp = d.delta_pct;
+    const cls = dp == null ? "" : dp > 0 ? "up" : "down";
+    const sign = dp == null ? "" : (dp >= 0 ? "+" : "");
+    return `
+      <tr>
+        <td class="name-cell">${escapeHtml(d.label)}</td>
+        <td class="num">${d.target}</td>
+        <td class="num ${cls}">${sign}${dp == null ? "—" : dp.toFixed(2)}%</td>
+        <td class="note">${escapeHtml(d.note)}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderTable(rows) {
+  const tbl = document.getElementById("tbl");
+  let html = "<thead><tr>" + HEADERS.map(h => `<th>${h[1]}</th>`).join("") + "</tr></thead><tbody>";
+  for (const r of [...rows].reverse()) {
+    html += "<tr>" + HEADERS.map(([key]) => {
+      const v = r[key];
+      if (key === "date") return `<td>${v ?? ""}</td>`;
+      if (key === "lots") return `<td>${fmtInt(v)}</td>`;
+      if (key === "change_pct" || key === "macd_osc") {
+        const cls = v == null ? "" : (v > 0 ? "up" : v < 0 ? "down" : "");
+        return `<td class="${cls}">${fmt(v)}</td>`;
+      }
+      return `<td>${fmt(v)}</td>`;
+    }).join("") + "</tr>";
+  }
+  html += "</tbody>";
+  tbl.innerHTML = html;
+}
+
+function rebuild(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), config);
+}
+
+const GRID = "#1f2738";
+const TICK = "#9aa3b8";
+const COMMON_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: "index", intersect: false },
+  plugins: {
+    legend: { position: "top", labels: { boxWidth: 12, boxHeight: 12, font: { size: 12 }, color: "#cbd2e0" } },
+    tooltip: {
+      backgroundColor: "rgba(11, 16, 24, 0.95)",
+      titleColor: "#e6eaf2", bodyColor: "#cbd2e0",
+      borderColor: "#2a3346", borderWidth: 1, padding: 10,
+    },
+  },
+  scales: {
+    x: { ticks: { maxTicksLimit: 12, font: { size: 11 }, color: TICK }, grid: { display: false, color: GRID } },
+    y: { ticks: { font: { size: 11 }, color: TICK }, grid: { color: GRID, drawBorder: false } },
+  },
+};
+function deepMerge(a, b) {
+  const out = { ...a };
+  for (const k in b) {
+    if (b[k] && typeof b[k] === "object" && !Array.isArray(b[k])) {
+      out[k] = deepMerge(a[k] || {}, b[k]);
+    } else { out[k] = b[k]; }
+  }
+  return out;
+}
+
+function renderCharts(rows) {
+  const labels = rows.map(r => r.date);
+  rebuild("priceChart", {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Close", data: rows.map(r => r.close),
+          borderColor: "#e6eaf2", borderWidth: 2, pointRadius: 1.8,
+          pointBackgroundColor: "#e6eaf2", tension: 0 },
+        { label: "MA5", data: rows.map(r => r.ma5),
+          borderColor: "#f87171", borderWidth: 1.2, pointRadius: 0, tension: 0 },
+        { label: "MA10", data: rows.map(r => r.ma10),
+          borderColor: "#60a5fa", borderWidth: 1.2, pointRadius: 0, tension: 0 },
+        { label: "MA20", data: rows.map(r => r.ma20),
+          borderColor: "#34d399", borderWidth: 1.2, pointRadius: 0, tension: 0 },
+      ],
+    },
+    options: COMMON_OPTS,
+  });
+  rebuild("kdChart", {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "K", data: rows.map(r => r.kd_k),
+          borderColor: "#f87171", borderWidth: 1.6, pointRadius: 0, tension: 0 },
+        { label: "D", data: rows.map(r => r.kd_d),
+          borderColor: "#60a5fa", borderWidth: 1.6, pointRadius: 0, tension: 0 },
+      ],
+    },
+    options: deepMerge(COMMON_OPTS, { scales: { y: { min: 0, max: 100 } } }),
+  });
+  rebuild("macdChart", {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "MACD-OSC",
+        data: rows.map(r => r.macd_osc),
+        backgroundColor: rows.map(r =>
+          r.macd_osc == null ? "rgba(107,114,128,0.4)"
+            : r.macd_osc >= 0 ? "rgba(248, 113, 113, 0.78)"
+            : "rgba(52, 211, 153, 0.78)"
+        ),
+        borderRadius: 2,
+      }],
+    },
+    options: deepMerge(COMMON_OPTS, { plugins: { legend: { display: false } } }),
+  });
+}
+
+route();
+</script>
+</body>
+</html>

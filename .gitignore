@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# LibreOffice/Office lock files
+.~lock.*#
+~$*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Editor
+.vscode/
+.idea/
+
+# Claude Code local config
+.claude/
