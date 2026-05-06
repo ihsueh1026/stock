@@ -780,6 +780,41 @@
 
     /* Step / history dots a bit larger for tap-friendly tooltip area */
     .step-light { width: 14px; height: 14px; }
+
+    /* 7-step dashboard: convert 6-col table into stacked rows.
+       The desktop layout is too wide for phones and was being clipped
+       by .steps-card's overflow:hidden. */
+    .steps-card { overflow: visible; padding: 14px 0 4px; }
+    .steps-card .card-title { padding: 0 14px; }
+    .steps-table { font-size: 13px; }
+    .steps-table thead { display: none; }
+    .steps-table, .steps-table tbody { display: block; width: 100%; }
+    .steps-table tr {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 6px 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .steps-table tr:last-child { border-bottom: none; }
+    .steps-table td {
+      display: block;
+      padding: 0 !important;
+      border: none;
+    }
+    .steps-table td:nth-child(1) { grid-column: 1; grid-row: 1; align-self: center; }
+    .steps-table .title-cell    { grid-column: 2; grid-row: 1; align-self: center; }
+    .steps-table .light-cell    { grid-column: 3; grid-row: 1; align-self: center;
+                                   white-space: nowrap; }
+    .steps-table .cond-cell     { grid-column: 1 / -1; grid-row: 2;
+                                   font-size: 11.5px; padding-top: 2px !important; }
+    .steps-table .history-cell  { grid-column: 1 / -1; grid-row: 3;
+                                   padding: 4px 0 !important; }
+    .steps-table .detail-cell   { grid-column: 1 / -1; grid-row: 4;
+                                   font-size: 11.5px; line-height: 1.55;
+                                   word-break: break-word; }
+    /* Allow history dots to wrap if 10 days run wider than the card */
+    .history-strip { flex-wrap: wrap; }
   }
 
   /* iPhone SE / very narrow (≤ 380px) — extra trim */
