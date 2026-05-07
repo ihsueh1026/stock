@@ -12,7 +12,7 @@ import json
 import statistics
 import sys
 import threading
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import requests
@@ -47,16 +47,16 @@ def _lock_for(key: str) -> threading.Lock:
         return lock
 
 
-# 交易日切換點:下午 3 點之後才算進入新的交易日。3 點之前(以及週末)
-# 都對應到「最近一個已收盤的交易日」,這樣早上開頁面才能直接看到昨天/
-# 上週五的快取,不必每天都重新抓。
-TRADING_DAY_ROLLOVER_HOUR = 15
+# 交易日切換點:下午 5:30 之後才算進入新的交易日。5:30 之前(以及週末)
+# 都對應到「最近一個已收盤的交易日」,這樣收盤後整理完資料才切換快取,
+# 不必擔心下午 3 點剛收盤時資料尚未完整更新。
+TRADING_DAY_ROLLOVER = time(17, 30)  # 17:30
 
 
 def _trading_day(now: datetime | None = None) -> date:
     now = now or datetime.now()
     d = now.date()
-    if now.hour < TRADING_DAY_ROLLOVER_HOUR:
+    if now.time() < TRADING_DAY_ROLLOVER:
         d -= timedelta(days=1)
     while d.weekday() >= 5:  # 5=Sat, 6=Sun
         d -= timedelta(days=1)
