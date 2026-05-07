@@ -697,6 +697,9 @@ def _summary(steps):
     reds = sum(1 for s in steps if s["light"] == "red")
     total = len(steps)
     s1_light = steps[0]["light"]
+    s2_light = steps[1]["light"]
+    s3_light = steps[2]["light"]
+    s4_light = steps[3]["light"]
     s7_light = steps[5]["light"]  # 出場警示 (after dropping 停損 from steps)
     s8_light = steps[6]["light"] if len(steps) >= 7 else "gray"  # 法人認養
     first_4_green = sum(1 for s in steps[:4] if s["light"] == "green")
@@ -707,6 +710,10 @@ def _summary(steps):
     elif (s1_light == "green" and first_4_green >= 3
             and s7_light != "red" and s8_light != "red"):
         light, label = "green", "🟢 次強進場"
+    elif (s1_light == "green" and s3_light == "green"
+            and s2_light != "green" and s4_light != "green"
+            and s7_light != "red" and s8_light != "red"):
+        light, label = "blue", "🔵 反轉進場"
     elif s7_light == "red":
         light, label = "red", "🔴 出場"
     elif reds >= 2:

@@ -41,6 +41,9 @@
     --yellow: #fbbf24;
     --yellow-bg: rgba(251, 191, 36, 0.13);
     --yellow-soft: rgba(251, 191, 36, 0.28);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96, 165, 250, 0.13);
+    --blue-soft: rgba(96, 165, 250, 0.28);
     --gray: #6b7280;
     --gray-bg: rgba(107, 114, 128, 0.16);
 
@@ -448,6 +451,8 @@
   .wc-label.orange .signal-dot { background: var(--orange); box-shadow: 0 0 8px var(--orange-soft); }
   .wc-label.yellow { color: var(--yellow); background: var(--yellow-bg); border-color: var(--yellow-soft); }
   .wc-label.yellow .signal-dot { background: var(--yellow); box-shadow: 0 0 8px var(--yellow-soft); }
+  .wc-label.blue { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-soft); }
+  .wc-label.blue .signal-dot { background: var(--blue); box-shadow: 0 0 8px var(--blue-soft); }
   .wc-label.gray { color: var(--text-faint); }
   .wc-score-text {
     font-size: 11px; color: var(--text-muted);
@@ -470,6 +475,7 @@
   .step-lights .step-light.red { background: var(--red); }
   .step-lights .step-light.orange { background: var(--orange); }
   .step-lights .step-light.yellow { background: var(--yellow); }
+  .step-lights .step-light.blue { background: var(--blue); }
   .step-lights .step-light.gray { background: var(--gray); opacity: 0.5; }
   .step-lights .step-light.none {
     background: transparent;
@@ -611,6 +617,7 @@
   .history-strip .h-dot.red { background: var(--red); }
   .history-strip .h-dot.orange { background: var(--orange); }
   .history-strip .h-dot.yellow { background: var(--yellow); }
+  .history-strip .h-dot.blue { background: var(--blue); }
   .history-strip .h-dot.gray { background: var(--gray); opacity: 0.4; }
   .history-strip .h-dot.today {
     outline: 1.5px solid var(--text);
@@ -883,6 +890,7 @@
           <ol>
             <li><b>🟢 強進場</b>:Step 1 綠 + Step 1~4 全綠 + Step 6 非紅 + Step 7 非紅</li>
             <li><b>🟢 次強進場</b>:Step 1 綠 + Step 1~4 ≥3 綠 + Step 6 非紅 + Step 7 非紅</li>
+            <li><b>🔵 反轉進場</b>:Step 1 綠 + Step 3 綠 + Step 2 非綠 + Step 4 非綠 + Step 6 非紅 + Step 7 非紅</li>
             <li><b>🔴 出場</b>:Step 6 出場警示紅</li>
             <li><b>🟠 觀望</b>:全 7 步紅燈 ≥2</li>
             <li><b>🟡 等待</b>:其餘情況</li>
@@ -1366,7 +1374,7 @@ function renderWatchCard(item) {
       </div>
       <div class="wc-signal">
         <span class="wc-label ${sm.light}">
-          <span class="signal-dot"></span>${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}⚪]\s*/u, ""))}
+          <span class="signal-dot"></span>${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F535}⚪]\s*/u, ""))}
         </span>
         <span class="step-lights" title="${sm.passed}/${sm.total || 8} 通過${sm.danger ? ` · ${sm.danger} 危險` : ""}">${lights}</span>
       </div>
