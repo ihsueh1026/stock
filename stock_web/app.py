@@ -826,7 +826,7 @@ def _compute_steps(window, code, market=MARKET_TWSE, t86_cached_only=False):
     return steps
 
 
-HISTORY_DAYS = 10
+HISTORY_DAYS = 15
 
 
 def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):

@@ -619,6 +619,11 @@
   .history-strip .h-dot.yellow { background: var(--yellow); }
   .history-strip .h-dot.blue { background: var(--blue); }
   .history-strip .h-dot.gray { background: var(--gray); opacity: 0.4; }
+  .history-strip .h-sep {
+    display: inline-block; width: 1px; height: 12px;
+    background: var(--border); margin: 0 5px;
+    vertical-align: middle; opacity: 0.7;
+  }
   .history-strip .h-dot.today {
     outline: 1.5px solid var(--text);
     outline-offset: 1px;
@@ -882,7 +887,7 @@
         <div class="label-line" id="overallLabel">—</div>
         <div class="score-line" id="overallScore"></div>
         <div class="overall-history" id="overallHistory" hidden>
-          <span class="oh-label">10 日趨勢</span>
+          <span class="oh-label">15 日趨勢</span>
           <span class="history-strip" id="overallHistoryStrip"></span>
         </div>
         <details class="overall-rules">
@@ -1555,18 +1560,21 @@ function renderOverallHistory(history) {
   }
   wrap.hidden = false;
   const lastIdx = history.length - 1;
+  const splitAt = history.length - 10; // separator: older-5 | recent-10
   strip.innerHTML = history.map((h, i) => {
     const light = h.overall || "gray";
     const today = i === lastIdx ? " today" : "";
     const label = (h.overall_label || "").replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}⚪]\s*/u, "");
     const tip = `${h.date}${label ? "  " + label : ""}`;
-    return `<span class="h-dot ${light}${today}" title="${escapeHtml(tip)}"></span>`;
+    const dot = `<span class="h-dot ${light}${today}" title="${escapeHtml(tip)}"></span>`;
+    return (i === splitAt && i > 0) ? `<span class="h-sep"></span>${dot}` : dot;
   }).join("");
 }
 
 function renderSteps(steps, history) {
   const body = document.getElementById("stepsBody");
   const lastIdx = history.length - 1;
+  const splitAt = history.length - 10; // separator: older-5 | recent-10
   body.innerHTML = steps.map((s, stepIdx) => {
     const strip = history.length === 0
       ? `<span class="history-strip-empty">—</span>`
@@ -1574,7 +1582,8 @@ function renderSteps(steps, history) {
         history.map((h, i) => {
           const light = (h.lights && h.lights[stepIdx]) || "gray";
           const today = i === lastIdx ? " today" : "";
-          return `<span class="h-dot ${light}${today}" title="${escapeHtml(h.date)}"></span>`;
+          const dot = `<span class="h-dot ${light}${today}" title="${escapeHtml(h.date)}"></span>`;
+          return (i === splitAt && i > 0) ? `<span class="h-sep"></span>${dot}` : dot;
         }).join("") +
         `</span>`;
     return `
