@@ -384,13 +384,15 @@
     color: var(--text-faint);
     border: none;
     border-radius: 6px;
-    padding: 8px 10px; font-size: 15px;
-    min-width: 36px; min-height: 36px;
+    padding: 8px 10px; font-size: 20px;
+    min-width: 40px; min-height: 40px;
     cursor: pointer;
     transition: all 0.15s;
     line-height: 1;
     -webkit-tap-highlight-color: rgba(91, 141, 255, 0.2);
   }
+  /* Icon-only span inside ghost buttons — makes ⟳ visually larger than the label text */
+  .btn-icon { font-size: 20px; line-height: 1; vertical-align: middle; margin-right: 3px; }
   .wc-btn:hover { background: var(--card-2); color: var(--text); }
   .wc-btn.danger:hover { color: var(--red); background: var(--red-bg); }
   /* Touch active feedback (replaces missing :hover) */
@@ -1044,7 +1046,7 @@ function showWatchlist() {
         <option value="code"${sortMode === "code" ? " selected" : ""}>股號</option>
       </select>
     </div>
-    <button class="ghost" id="refreshAllBtn">⟳ 全部更新</button>
+    <button class="ghost" id="refreshAllBtn"><span class="btn-icon">⟳</span> 全部更新</button>
   `;
   document.getElementById("refreshAllBtn").addEventListener("click", refreshAll);
   document.getElementById("sortMode").addEventListener("change", (e) => {
@@ -1089,7 +1091,7 @@ function renderDetailHeader(code) {
   const prevTitle = prev ? `上一檔 ${prev}` : "已是第一檔";
   const nextTitle = next ? `下一檔 ${next}` : "已是最後一檔";
   document.getElementById("headerActions").innerHTML = `
-    <button class="ghost" id="refreshDetailBtn">⟳ 重新抓取</button>
+    <button class="ghost" id="refreshDetailBtn"><span class="btn-icon">⟳</span> 重新抓取</button>
     <button class="ghost" onclick="window.location.hash='#/'">返回清單</button>
     <button class="ghost" ${prevAttr} title="${prevTitle}">上一檔</button>
     <button class="ghost" ${nextAttr} title="${nextTitle}">下一檔</button>
@@ -1427,6 +1429,7 @@ async function deleteOne(code) {
 }
 
 async function refreshOne(code) {
+  if (!confirm(`確定重新抓取 ${code}？`)) return;
   const card = document.querySelector(`[data-card-code="${code}"]`);
   if (card) card.classList.add("loading");
   setStatus(`重新抓取 ${code}...(約 30-60 秒)`, false, true);
@@ -1444,6 +1447,7 @@ async function refreshOne(code) {
 }
 
 async function refreshAll() {
+  if (!confirm('確定全部重新抓取？\n將依序更新所有個股資料（約需 1～2 分鐘）。')) return;
   const res = await fetch("/api/watchlist");
   const data = await res.json();
   const codes = (data.items || []).map(it => it.code);
@@ -1466,6 +1470,7 @@ async function refreshAll() {
    DETAIL
    ============================================================ */
 async function refreshDetail(code) {
+  if (!confirm(`確定重新抓取 ${code}？`)) return;
   setStatus(`重新抓取 ${code}...`, false, true);
   try {
     await fetch(`/api/watchlist/${code}/refresh`, { method: "POST" });
