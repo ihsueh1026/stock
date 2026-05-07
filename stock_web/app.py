@@ -381,14 +381,21 @@ def _step_2_trend(window, last):
     ma10 = last.get("ma10")
     ma20 = last.get("ma20")
     ma60 = last.get("ma60")
-    ma20_5ago = window[-6].get("ma20") if len(window) >= 6 else None
+    # 5-day linear regression slope on MA20 — avoids 2-point jitter at flat tops
+    ma20_vals = [row.get("ma20") for row in window[-5:]]
     base = {"step": 2, "title": "趨勢結構",
-            "condition": "MA10>MA20>MA60 且 MA20 斜率向上"}
-    if any(v is None for v in (ma10, ma20, ma60, ma20_5ago)):
+            "condition": "MA10>MA20>MA60 且 MA20 五日回歸斜率向上"}
+    if any(v is None for v in (ma10, ma20, ma60)) or None in ma20_vals or len(ma20_vals) < 5:
         return {**base, "light": "gray", "detail": "資料不足"}
+    n = len(ma20_vals)
+    x_bar = (n - 1) / 2.0
+    y_bar = sum(ma20_vals) / n
+    cov = sum((i - x_bar) * (ma20_vals[i] - y_bar) for i in range(n))
+    var = sum((i - x_bar) ** 2 for i in range(n))  # = 10.0 for n=5
+    lr_slope = cov / var if var else 0.0
+    c_slope = lr_slope > 0
     c_stack = (ma10 > ma20) and (ma20 > ma60)
     c_partial = ma10 > ma20
-    c_slope = ma20 > ma20_5ago
     if c_stack and c_slope:
         light = "green"
     elif c_partial and c_slope:
@@ -399,7 +406,7 @@ def _step_2_trend(window, last):
         light = "red"
     trend = "多頭排列" if c_stack else ("多頭" if c_partial else "空頭")
     detail = (f"MA10={ma10:.1f}  MA20={ma20:.1f}  MA60={ma60:.1f}  "
-              f"{trend}  斜率:{'↑' if c_slope else '↓'}")
+              f"{trend}  斜率:{'↑' if c_slope else '↓'}({lr_slope:+.2f})")
     return {**base, "light": light, "detail": detail}
 
 
