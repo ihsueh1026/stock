@@ -117,8 +117,9 @@ def _t86_cached_only(date_iso: str, market: str = MARKET_TWSE) -> dict | None:
 def _fetch_t86(date_iso: str, market: str = MARKET_TWSE) -> dict:
     """Return {code: {f, t, d, tot}} of net shares per stock for date_iso.
 
-    Empty dict on non-trading days or fetch errors. Result is cached forever
-    (per-date file) since historical institutional data does not change.
+    Empty dict on non-trading days or fetch errors. Only non-empty results
+    are cached — empty caches are ignored on load so a later retry can
+    succeed after a transient API failure.
     Net values are in shares (not lots).
     """
     date_compact = date_iso.replace("-", "")
@@ -126,25 +127,30 @@ def _fetch_t86(date_iso: str, market: str = MARKET_TWSE) -> dict:
     if cache.exists():
         try:
             with cache.open() as f:
-                return json.load(f)
+                data = json.load(f)
+            if data:  # skip empty cache — allow re-fetch
+                return data
         except (OSError, json.JSONDecodeError):
             pass
     with _lock_for(f"__t86_{market}_{date_compact}__"):
         if cache.exists():
             try:
                 with cache.open() as f:
-                    return json.load(f)
+                    data = json.load(f)
+                if data:
+                    return data
             except (OSError, json.JSONDecodeError):
                 pass
         if market == MARKET_TWSE:
             out = _fetch_t86_twse(date_compact)
         else:
             out = _fetch_t86_otc(date_iso)
-        try:
-            with cache.open("w") as f:
-                json.dump(out, f)
-        except OSError:
-            pass
+        if out:  # only persist non-empty results
+            try:
+                with cache.open("w") as f:
+                    json.dump(out, f)
+            except OSError:
+                pass
         return out
 
 
