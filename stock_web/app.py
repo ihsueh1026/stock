@@ -76,7 +76,12 @@ def _stock_cache(code: str) -> Path:
 
 
 def _taiex_cache() -> Path:
-    return CACHE_DIR / f"taiex_{_today_tag()}.json"
+    # Use the real calendar date so this cache refreshes on the actual day,
+    # independent of the 17:30 trading-day rollover.  Stock caches keyed by
+    # trading-day tag may include the current calendar day's rows even before
+    # the rollover flips; using the calendar date ensures their taiex field
+    # is always populated from a fresh fetch.
+    return CACHE_DIR / f"taiex_{date.today().strftime('%Y%m%d')}.json"
 
 
 # Market identifiers — drives fetcher routing, T86 source, and frontend label.
