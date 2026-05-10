@@ -69,12 +69,12 @@ def _composite_and(*preds):
 #   step:      event = day a specific step's light transitions INTO `light`
 #   composite: event = day a custom predicate transitions from False -> True
 SIGNAL_DEFS = {
-    "strong":     {"type": "summary", "label": "🟢 強進場"},
-    "sub-strong": {"type": "summary", "label": "🟢 次強進場"},
-    "reversal":   {"type": "summary", "label": "🔵 反轉進場"},
-    "exit":       {"type": "summary", "label": "🔴 出場"},
-    "watch":      {"type": "summary", "label": "🟠 觀望"},
-    "wait":       {"type": "summary", "label": "🟡 等待"},
+    "strong":     {"type": "summary", "label": "🟢 多頭擴張"},
+    "sub-strong": {"type": "summary", "label": "🟢 多頭發展"},
+    "reversal":   {"type": "summary", "label": "🔵 反彈訊號"},
+    "exit":       {"type": "summary", "label": "🔴 趨勢轉弱"},
+    "watch":      {"type": "summary", "label": "🟠 訊號分歧"},
+    "wait":       {"type": "summary", "label": "🟡 盤整中"},
     # Step-level signals — useful for testing whether individual lights
     # have predictive power independent of the summary aggregation.
     "s3-red":     {"type": "step", "step_idx": 2, "light": "red"},

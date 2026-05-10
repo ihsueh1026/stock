@@ -902,19 +902,24 @@
         </div>
         <details class="overall-rules">
           <summary>判定規則</summary>
+          <p class="rules-note" style="margin-top: 8px;">
+            <b>本儀表板為市況狀態描述,不是進出場機械訊號</b>。
+            5 年回測顯示這些燈號對未來報酬無顯著預測力,標籤僅描述「目前處於什麼市況」,
+            實際進出場仍需個人判斷與風險控管。
+          </p>
           <ol>
-            <li><b>🟢 強進場</b>:Step 1 綠 + Step 1~4 全綠 + Step 6 非紅 + Step 7 非紅</li>
-            <li><b>🟢 次強進場</b>:Step 1 綠 + Step 1~4 ≥3 綠 + Step 6 非紅 + Step 7 非紅</li>
-            <li><b>🔵 反轉進場</b>:Step 1 綠 + Step 3 綠 + Step 2 非綠 + Step 4 非綠 + Step 6 非紅 + Step 7 非紅</li>
-            <li><b>🔴 出場</b>:Step 6 出場警示紅</li>
-            <li><b>🟠 觀望</b>:全 7 步紅燈 ≥2</li>
-            <li><b>🟡 等待</b>:其餘情況</li>
+            <li><b>🟢 多頭擴張</b>:Step 1 綠 + Step 1~4 全綠 + Step 6 非紅 + Step 7 非紅</li>
+            <li><b>🟢 多頭發展</b>:Step 1 綠 + Step 1~4 ≥3 綠 + Step 6 非紅 + Step 7 非紅</li>
+            <li><b>🔵 反彈訊號</b>:Step 1 綠 + Step 3 綠 + Step 2 非綠 + Step 4 非綠 + Step 6 非紅 + Step 7 非紅</li>
+            <li><b>🔴 趨勢轉弱</b>:Step 6 出場警示紅</li>
+            <li><b>🟠 訊號分歧</b>:全 7 步紅燈 ≥2</li>
+            <li><b>🟡 盤整中</b>:其餘情況</li>
           </ol>
           <p class="rules-note">
             Step 1 大盤為強制閘門,未綠則最高僅黃燈。<br>
-            Step 6 出場警示為一票否決,紅燈直接覆蓋進場分數。<br>
-            Step 7 法人認養為軟否決,紅燈不會直接觸發紅,但會擋住「強/次強進場」升級。<br>
-            Step 5 持有不參與進場升級或單獨否決,但其紅燈會計入「紅燈 ≥2 → 觀望」總數。
+            Step 6 出場警示為一票否決,紅燈直接覆蓋多頭分數。<br>
+            Step 7 法人認養為軟否決,紅燈不會直接觸發紅,但會擋住「多頭擴張/發展」升級。<br>
+            Step 5 持有不參與升級或單獨否決,但其紅燈會計入「紅燈 ≥2 → 訊號分歧」總數。
           </p>
         </details>
       </div>

@@ -888,22 +888,25 @@ def _summary(steps):
     s8_light = steps[6]["light"] if len(steps) >= 7 else "gray"  # 法人認養
     first_4_green = sum(1 for s in steps[:4] if s["light"] == "green")
 
+    # Labels describe the current market state, not an action.
+    # Backtest (backtest/study.py) showed no signal predicts forward
+    # alpha across stocks/horizons, so these are observation tags.
     if (s1_light == "green" and first_4_green == 4
             and s7_light != "red" and s8_light != "red"):
-        light, label = "green", "🟢 強進場"
+        light, label = "green", "🟢 多頭擴張"
     elif (s1_light == "green" and first_4_green >= 3
             and s7_light != "red" and s8_light != "red"):
-        light, label = "green", "🟢 次強進場"
+        light, label = "green", "🟢 多頭發展"
     elif (s1_light == "green" and s3_light == "green"
             and s2_light != "green" and s4_light != "green"
             and s7_light != "red" and s8_light != "red"):
-        light, label = "blue", "🔵 反轉進場"
+        light, label = "blue", "🔵 反彈訊號"
     elif s7_light == "red":
-        light, label = "red", "🔴 出場"
+        light, label = "red", "🔴 趨勢轉弱"
     elif reds >= 2:
-        light, label = "orange", "🟠 觀望"
+        light, label = "orange", "🟠 訊號分歧"
     else:
-        light, label = "yellow", "🟡 等待"
+        light, label = "yellow", "🟡 盤整中"
 
     return {
         "light": light, "label": label,
@@ -926,37 +929,39 @@ def _price_zones(summary, last, sigma, s6_light):
 
     if is_buy:
         zones = [
-            {"name": "🟢 積極買進", "basis": "-1σ 統計下緣",
+            {"name": "🟢 第一支撐", "basis": "-1σ 統計下緣",
              "low": round(close * (1 - sigma * 1.2), 1),
              "high": round(close * (1 - sigma * 0.8), 1)},
-            {"name": "🟡 較安全買點", "basis": "-1.5σ 跌深區",
+            {"name": "🟡 第二支撐", "basis": "-1.5σ 跌深區",
              "low": round(close * (1 - sigma * 1.8), 1),
              "high": round(close * (1 - sigma * 1.4), 1)},
-            {"name": "🔵 強支撐買點", "basis": "-2σ 強支撐",
+            {"name": "🔵 強支撐", "basis": "-2σ 統計下緣",
              "low": round(close * (1 - sigma * 2.4), 1),
              "high": round(close * (1 - sigma * 2.0), 1)},
         ]
-        note = f"燈號偏多 → 顯示買進區間(以收盤 {close:.1f}、σ={sigma*100:.2f}%)"
+        note = (f"燈號偏多 → 顯示下方支撐區(收盤 {close:.1f}、"
+                f"σ={sigma*100:.2f}%);僅供觀察,非進場建議")
         return {"mode": "buy", "zones": zones, "note": note}
 
     if is_sell and ma5 is not None and ma10 is not None:
         zones = [
-            {"name": "🟡 小反彈賣", "basis": "MA5 壓力",
+            {"name": "🟡 第一壓力", "basis": "MA5 壓力",
              "low": round(min(ma5, close * (1 + sigma * 0.8)), 1),
              "high": round(max(ma5, close * (1 + sigma * 1.2)), 1)},
-            {"name": "🔴 較佳出場", "basis": "MA10 強壓",
+            {"name": "🔴 第二壓力", "basis": "MA10 強壓",
              "low": round(min(ma10, close * (1 + sigma * 1.4)), 1),
              "high": round(max(ma10, close * (1 + sigma * 1.8)), 1)},
-            {"name": "⚠️ 突破關鍵", "basis": "站上該價燈號轉強",
+            {"name": "⚠️ 關鍵壓力", "basis": "站上此區燈號可能轉強",
              "low": round(max(ma10, close * (1 + sigma * 2.0)), 1),
              "high": round(close * (1 + sigma * 2.4), 1)},
         ]
-        note = f"燈號偏空 → 顯示賣出區間(以收盤 {close:.1f}、σ={sigma*100:.2f}%)"
+        note = (f"燈號偏空 → 顯示上方壓力區(收盤 {close:.1f}、"
+                f"σ={sigma*100:.2f}%);僅供觀察,非出場建議")
         return {"mode": "sell", "zones": zones, "note": note}
 
     return {
         "mode": "wait", "zones": [],
-        "note": f"目前燈號為「{summary['label']}」,建議等待、不推薦進出場",
+        "note": f"目前燈號為「{summary['label']}」,訊號分歧,儀表板僅作觀察",
     }
 
 
@@ -971,12 +976,12 @@ def _distance(last, sigma):
     buy_pct = (buy_target - close) / close * 100
     sell_pct = (sell_target - close) / close * 100
     return [
-        {"label": "🟢 至買進區", "target": buy_target,
+        {"label": "🟢 至支撐區", "target": buy_target,
          "delta_pct": round(buy_pct, 2),
-         "note": f"再跌 {abs(buy_pct):.1f}% 至 {buy_target} 進入積極買進區"},
-        {"label": "🔴 至賣出區", "target": sell_target,
+         "note": f"再跌 {abs(buy_pct):.1f}% 至 {buy_target} 進入支撐區"},
+        {"label": "🔴 至壓力區", "target": sell_target,
          "delta_pct": round(sell_pct, 2),
-         "note": f"再漲 {abs(sell_pct):.1f}% 至 {sell_target} 進入反彈賣出區"},
+         "note": f"再漲 {abs(sell_pct):.1f}% 至 {sell_target} 進入壓力區"},
     ]
 
 
