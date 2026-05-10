@@ -479,6 +479,12 @@
   /* Step lights row (subtle indicator) — now inline with overall light */
   .step-lights {
     display: flex; gap: 5px; align-items: center;
+  }
+  /* 7-light dots and the ★N badge stay together as one right-aligned group,
+     so on narrow cards they wrap onto a new line as a unit instead of the
+     badge getting orphaned. */
+  .wc-right-grp {
+    display: inline-flex; align-items: center; gap: 8px;
     margin-left: auto;
   }
   .step-lights .step-light {
@@ -1430,12 +1436,17 @@ function renderWatchCard(item) {
   // Format date as MM/DD for compactness
   const asOf = item.as_of ? item.as_of.slice(5).replace("-", "/") : "";
   // Reversal-quality badge: only shown when ≥2/5 (per backtest, lower
-  // scores carry no signal). Compact "★ N" form to keep the card width
-  // predictable — full N-star display is on the detail page. Hover for desc.
+  // scores carry no signal). Compact "★N" form. Wrapped together with
+  // step-lights so on narrow cards they wrap as a group.
   const rq = item.reversal_quality;
   const rqBadge = rq && rq.score >= 2
     ? `<span class="wc-rq" title="反轉品質 ${rq.score}/${rq.max} · ${escapeHtml(rq.desc || "")}(觀察用)">★${rq.score}</span>`
     : "";
+  const rightGrp =
+    `<span class="wc-right-grp">` +
+    `<span class="step-lights" title="${sm.passed}/${sm.total || 8} 通過${sm.danger ? ` · ${sm.danger} 危險` : ""}">${lights}</span>` +
+    rqBadge +
+    `</span>`;
   return `
     <a class="watch-card ${sm.light}" href="#/stock/${code}" data-card-code="${code}" draggable="true">
       <div class="wc-row1">
@@ -1451,8 +1462,7 @@ function renderWatchCard(item) {
         <span class="wc-label ${sm.light}">
           <span class="signal-dot"></span>${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F535}⚪]\s*/u, ""))}
         </span>
-        <span class="step-lights" title="${sm.passed}/${sm.total || 8} 通過${sm.danger ? ` · ${sm.danger} 危險` : ""}">${lights}</span>
-        ${rqBadge}
+        ${rightGrp}
       </div>
     </a>`;
 }
