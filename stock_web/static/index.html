@@ -459,6 +459,17 @@
   .wc-label.blue { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-soft); }
   .wc-label.blue .signal-dot { background: var(--blue); box-shadow: 0 0 8px var(--blue-soft); }
   .wc-label.gray { color: var(--text-faint); }
+  .wc-rq {
+    display: inline-flex; align-items: center;
+    padding: 2px 6px; margin-left: auto;
+    border-radius: 6px;
+    background: rgba(245, 215, 110, 0.12);
+    border: 1px solid rgba(245, 215, 110, 0.3);
+    color: #f5d76e;
+    font-size: 11px; letter-spacing: 0.5px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
   .wc-score-text {
     font-size: 11px; color: var(--text-muted);
     font-variant-numeric: tabular-nums;
@@ -1418,6 +1429,12 @@ function renderWatchCard(item) {
   ).join("");
   // Format date as MM/DD for compactness
   const asOf = item.as_of ? item.as_of.slice(5).replace("-", "/") : "";
+  // Reversal-quality badge: only shown when ≥2/5 (per backtest, lower
+  // scores carry no signal). Hover for description.
+  const rq = item.reversal_quality;
+  const rqBadge = rq && rq.score >= 2
+    ? `<span class="wc-rq" title="反轉品質 ${rq.score}/${rq.max} · ${escapeHtml(rq.desc || "")}(觀察用)">${rq.stars}</span>`
+    : "";
   return `
     <a class="watch-card ${sm.light}" href="#/stock/${code}" data-card-code="${code}" draggable="true">
       <div class="wc-row1">
@@ -1434,6 +1451,7 @@ function renderWatchCard(item) {
           <span class="signal-dot"></span>${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F535}⚪]\s*/u, ""))}
         </span>
         <span class="step-lights" title="${sm.passed}/${sm.total || 8} 通過${sm.danger ? ` · ${sm.danger} 危險` : ""}">${lights}</span>
+        ${rqBadge}
       </div>
     </a>`;
 }
