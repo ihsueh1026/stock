@@ -549,6 +549,35 @@
   .hero-overall .overall-history .history-strip .h-dot {
     width: 12px; height: 12px; border-radius: 3px;
   }
+  .hero-overall .reversal-quality {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12.5px; color: var(--text-muted);
+  }
+  .hero-overall .reversal-quality .rq-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .hero-overall .reversal-quality .rq-stars {
+    color: #f5d76e; font-weight: 600; letter-spacing: 1px;
+    font-size: 14px;
+  }
+  .hero-overall .reversal-quality .rq-desc { color: var(--text); }
+  .hero-overall .reversal-quality .rq-note {
+    color: var(--text-faint); font-size: 11.5px; margin-left: auto;
+  }
+  .hero-overall .reversal-quality .rq-checks {
+    list-style: none; padding: 8px 0 0; margin: 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px;
+    font-size: 12px;
+  }
+  .hero-overall .reversal-quality .rq-checks li.pass { color: var(--green); }
+  .hero-overall .reversal-quality .rq-checks li.fail { color: var(--text-faint); }
+  .hero-overall .reversal-quality .rq-detail {
+    color: var(--text-faint); margin-left: 4px; font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 480px) {
+    .hero-overall .reversal-quality .rq-checks { grid-template-columns: 1fr; }
+  }
   .hero-overall .overall-rules {
     margin-top: 10px; font-size: 12.5px; color: var(--text-muted);
   }
@@ -899,6 +928,14 @@
         <div class="overall-history" id="overallHistory" hidden>
           <span class="oh-label">15 日趨勢</span>
           <span class="history-strip" id="overallHistoryStrip"></span>
+        </div>
+        <div class="reversal-quality" id="reversalQuality" hidden>
+          <div class="rq-head">
+            <span class="rq-stars" id="rqStars"></span>
+            <span class="rq-desc" id="rqDesc"></span>
+            <span class="rq-note" id="rqNote"></span>
+          </div>
+          <ul class="rq-checks" id="rqChecks"></ul>
         </div>
         <details class="overall-rules">
           <summary>判定規則</summary>
@@ -1521,6 +1558,7 @@ async function loadStock(code) {
 
     renderHero(data.dashboard, last, data.code, data.info);
     renderOverallHistory(data.dashboard.history || []);
+    renderReversalQuality(data.dashboard.reversal_quality);
     if (data.info && data.info.short_name) {
       const crumb = document.getElementById("crumb");
       const ind = data.info.industry
@@ -1574,6 +1612,29 @@ function renderHero(dashboard, lastRow, code, info) {
     <span>量 ${fmtInt(lastRow.lots)} 張</span>
     ${sigmaTxt ? `<span>${sigmaTxt}</span>` : ""}
   `;
+}
+
+function renderReversalQuality(rq) {
+  const wrap = document.getElementById("reversalQuality");
+  // Hide noise: only show when at least 2 of 5 conditions hit. The
+  // backtest showed no single combination has cross-stock alpha, so
+  // sub-2 is just clutter.
+  if (!rq || rq.score < 2) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  document.getElementById("rqStars").textContent = rq.stars || "";
+  document.getElementById("rqDesc").textContent =
+    `反轉品質 · ${rq.desc || ""} (${rq.score}/${rq.max})`;
+  document.getElementById("rqNote").textContent = rq.note || "";
+  const ul = document.getElementById("rqChecks");
+  ul.innerHTML = (rq.checks || []).map(c => {
+    const cls = c.passed ? "pass" : "fail";
+    const mark = c.passed ? "✓" : "✗";
+    return `<li class="${cls}">${mark} ${escapeHtml(c.name)}` +
+      `<span class="rq-detail">${escapeHtml(c.detail || "")}</span></li>`;
+  }).join("");
 }
 
 function renderOverallHistory(history) {

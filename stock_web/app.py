@@ -1043,18 +1043,104 @@ def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):
     return out
 
 
+def _reversal_quality(window: list[dict]) -> dict | None:
+    """Score how 'reversal-shaped' the current bar is, 0..5.
+
+    Reverse-engineered from backtest/find_winners.py on 2395/5388/2357 —
+    these are the conditions that, on average, distinguish reversal lows
+    that went on to rally ≥15-20% within 60 days from those that didn't.
+    The score is intentionally an OBSERVATION AID, not an entry signal:
+    no single combination has cross-stock alpha. Hide on UI when score
+    is 0-1.
+    """
+    if len(window) < 20:
+        return None
+    last = window[-1]
+    close = last.get("close")
+    if close is None:
+        return None
+    closes20 = [r["close"] for r in window[-20:] if r.get("close") is not None]
+    highs20 = [r["high"] for r in window[-20:] if r.get("high") is not None]
+    if len(closes20) < 20 or not highs20:
+        return None
+    min_close_20 = min(closes20)
+    peak_high_20 = max(highs20)
+    drawdown_pct = (close - peak_high_20) / peak_high_20 * 100
+    near_low_pct = (close - min_close_20) / min_close_20 * 100  # ≥ 0
+
+    k = last.get("kd_k")
+    rsi6 = last.get("rsi6")
+    lots = last.get("lots")
+    lots5 = [r["lots"] for r in window[-6:-1] if r.get("lots") is not None]
+
+    checks = []
+    # 1. close 在 20 日低點附近 (≤2%)
+    checks.append({
+        "name": "近 20 日低點 (≤2%)",
+        "passed": near_low_pct <= 2.0,
+        "detail": f"距 20 日低 +{near_low_pct:.1f}%",
+    })
+    # 2. 前期跌深 ≥5%
+    checks.append({
+        "name": "前期跌幅 ≥5%",
+        "passed": drawdown_pct <= -5.0,
+        "detail": f"DD20={drawdown_pct:+.1f}%",
+    })
+    # 3. K < 25 (KD 超賣)
+    checks.append({
+        "name": "K 超賣 (<25)",
+        "passed": k is not None and k < 25,
+        "detail": f"K={k:.1f}" if k is not None else "K 資料不足",
+    })
+    # 4. RSI6 < 35
+    checks.append({
+        "name": "RSI6 偏低 (<35)",
+        "passed": rsi6 is not None and rsi6 < 35,
+        "detail": f"RSI6={rsi6:.1f}" if rsi6 is not None else "RSI6 資料不足",
+    })
+    # 5. 量比 ≥ 1.0
+    if lots is not None and lots5:
+        avg = sum(lots5) / len(lots5)
+        ratio = (lots / avg) if avg > 0 else 0
+        c5_pass = ratio >= 1.0
+        c5_detail = f"量比={ratio:.2f}x"
+    else:
+        c5_pass = False
+        c5_detail = "量資料不足"
+    checks.append({"name": "量比 ≥1.0", "passed": c5_pass, "detail": c5_detail})
+
+    score = sum(1 for c in checks if c["passed"])
+    STARS = ["—", "★", "★★", "★★★", "★★★★", "★★★★★"]
+    DESCS = [
+        "未呈反轉特徵",
+        "條件不足",
+        "部分條件成立",
+        "中等反轉條件",
+        "良好反轉條件",
+        "高品質反轉位置",
+    ]
+    return {
+        "score": score,
+        "max": 5,
+        "stars": STARS[score],
+        "desc": DESCS[score],
+        "checks": checks,
+        "note": "觀察用,非進場依據",
+    }
+
+
 def compute_dashboard(full_rows: list[dict], code: str | None = None,
                       market: str = MARKET_TWSE) -> dict:
     if not full_rows:
         return {"as_of": None, "sigma": None, "steps": [],
                 "summary": None, "price_zones": None, "distance": [],
-                "history": []}
+                "history": [], "reversal_quality": None}
     window = full_rows[-20:]
     last = window[-1]
     if len(window) < 2:
         return {"as_of": last["date"], "sigma": None, "steps": [],
                 "summary": None, "price_zones": None, "distance": [],
-                "history": []}
+                "history": [], "reversal_quality": None}
     sigma = _sigma(window)
     steps = _compute_steps(window, code, market=market, t86_cached_only=False)
     s6 = steps[4]  # 持有
@@ -1063,12 +1149,14 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
     zones = _price_zones(summary, last, sigma, s6["light"])
     distance = _distance(last, sigma) + _stoploss_levels(last, sigma)
     history = _history_lights(full_rows, code, market=market)
+    reversal = _reversal_quality(window)
 
     return {
         "as_of": last["date"],
         "sigma": sigma,
         "steps": steps,
         "summary": summary,
+        "reversal_quality": reversal,
         "price_zones": zones,
         "distance": distance,
         "history": history,
