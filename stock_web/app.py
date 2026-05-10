@@ -12,7 +12,7 @@ import json
 import statistics
 import sys
 import threading
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -33,6 +33,17 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 # slightly from broker apps that load multi-year history.
 WEB_WARMUP_DAYS = 60
 
+# How many days of dated cache files to keep on disk. Anything older is
+# purged at startup. Per-stock incremental updates also rely on a recent
+# cache to skip the full 13-month refetch, so don't drop below ~7.
+CACHE_RETENTION_DAYS = 7
+
+# Filename prefixes that carry a _YYYYMMDD.json suffix and are safe to purge.
+# 'taiex_manual.json' has no date suffix and is the only persistent override.
+_DATED_CACHE_PREFIXES = (
+    "taiex_", "t86_", "t86otc_", "companies_", "companies_otc_",
+)
+
 # Per-stock locks so concurrent requests for the same code don't double-fetch.
 _fetch_locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -47,17 +58,42 @@ def _lock_for(key: str) -> threading.Lock:
         return lock
 
 
-# 交易日切換點:下午 5:30 之後才算進入新的交易日。5:30 之前(以及週末)
-# 都對應到「最近一個已收盤的交易日」,這樣收盤後整理完資料才切換快取,
-# 不必擔心下午 3 點剛收盤時資料尚未完整更新。
-TRADING_DAY_ROLLOVER = time(17, 30)  # 17:30
+def _parse_cache_date(path: Path) -> date | None:
+    """Extract the YYYYMMDD date from a cache filename, or None if it has no
+    date suffix. Matches both per-stock files (`2330_20260508.json`) and
+    prefixed files (`taiex_20260508.json`)."""
+    stem = path.stem
+    tag = stem.rsplit("_", 1)[-1]
+    if not (tag.isdigit() and len(tag) == 8):
+        return None
+    try:
+        return datetime.strptime(tag, "%Y%m%d").date()
+    except ValueError:
+        return None
 
 
+def _purge_old_caches(retention_days: int = CACHE_RETENTION_DAYS) -> int:
+    """Delete dated cache files older than `retention_days`. Returns the
+    number of files removed. Skips `taiex_manual.json` (no date suffix)."""
+    cutoff = _trading_day() - timedelta(days=retention_days)
+    removed = 0
+    for path in CACHE_DIR.glob("*.json"):
+        d = _parse_cache_date(path)
+        if d is None or d >= cutoff:
+            continue
+        try:
+            path.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+# 對應的交易日 = 今天日曆日,週末回推至週五。盤後資料若尚未產出,
+# TAIEX 會缺值,前端會在 taiexBar 提示使用者手動填入。
 def _trading_day(now: datetime | None = None) -> date:
     now = now or datetime.now()
     d = now.date()
-    if now.time() < TRADING_DAY_ROLLOVER:
-        d -= timedelta(days=1)
     while d.weekday() >= 5:  # 5=Sat, 6=Sun
         d -= timedelta(days=1)
     return d
@@ -76,12 +112,7 @@ def _stock_cache(code: str) -> Path:
 
 
 def _taiex_cache() -> Path:
-    # Use the real calendar date so this cache refreshes on the actual day,
-    # independent of the 17:30 trading-day rollover.  Stock caches keyed by
-    # trading-day tag may include the current calendar day's rows even before
-    # the rollover flips; using the calendar date ensures their taiex field
-    # is always populated from a fresh fetch.
-    return CACHE_DIR / f"taiex_{date.today().strftime('%Y%m%d')}.json"
+    return CACHE_DIR / f"taiex_{_today_tag()}.json"
 
 
 # Market identifiers — drives fetcher routing, T86 source, and frontend label.
@@ -274,6 +305,53 @@ def _load_taiex(target_rows: int) -> dict:
         return _overlay_manual(parsed)
 
 
+def _adx_wilder(highs: list, lows: list, closes: list, n: int = 14) -> list:
+    """ADX(n) using Wilder smoothing. Aligned to closes; None where insufficient."""
+    L = len(closes)
+    out = [None] * L
+    if L < 2 * n + 1:
+        return out
+    tr = [0.0] * L
+    plus_dm = [0.0] * L
+    minus_dm = [0.0] * L
+    for i in range(1, L):
+        h, l, pc = highs[i], lows[i], closes[i - 1]
+        ph, pl = highs[i - 1], lows[i - 1]
+        if None in (h, l, pc, ph, pl):
+            # propagate gap by treating as zero movement; rare in practice
+            continue
+        tr[i] = max(h - l, abs(h - pc), abs(l - pc))
+        up = h - ph
+        dn = pl - l
+        plus_dm[i] = up if (up > dn and up > 0) else 0.0
+        minus_dm[i] = dn if (dn > up and dn > 0) else 0.0
+    tr_n = sum(tr[1:n + 1])
+    pdm_n = sum(plus_dm[1:n + 1])
+    mdm_n = sum(minus_dm[1:n + 1])
+    dx_list = []
+    def _dx(tr_, pdm_, mdm_):
+        if tr_ <= 0:
+            return 0.0
+        pdi = 100 * pdm_ / tr_
+        mdi = 100 * mdm_ / tr_
+        denom = pdi + mdi
+        return 100 * abs(pdi - mdi) / denom if denom else 0.0
+    dx_list.append(_dx(tr_n, pdm_n, mdm_n))
+    for i in range(n + 1, L):
+        tr_n = tr_n - tr_n / n + tr[i]
+        pdm_n = pdm_n - pdm_n / n + plus_dm[i]
+        mdm_n = mdm_n - mdm_n / n + minus_dm[i]
+        dx_list.append(_dx(tr_n, pdm_n, mdm_n))
+    if len(dx_list) < n:
+        return out
+    adx_v = sum(dx_list[:n]) / n
+    out[2 * n - 1] = adx_v
+    for j in range(n, len(dx_list)):
+        adx_v = (adx_v * (n - 1) + dx_list[j]) / n
+        out[n + j] = adx_v
+    return out
+
+
 def _compute_rows(series: list[dict], taiex_close: dict) -> list[dict]:
     closes = [pt["close"] for pt in series]
     highs = [pt["high"] for pt in series]
@@ -288,6 +366,7 @@ def _compute_rows(series: list[dict], taiex_close: dict) -> list[dict]:
     k_vals, d_vals = twse.kd(highs, lows, closes, 9)
     _dif, _sig, osc = twse.macd(closes, 12, 26, 9)
     chg = twse.pct_change(closes)
+    adx = _adx_wilder(highs, lows, closes, 14)
 
     out = []
     for i, pt in enumerate(series):
@@ -308,32 +387,112 @@ def _compute_rows(series: list[dict], taiex_close: dict) -> list[dict]:
             "kd_k": k_vals[i],
             "kd_d": d_vals[i],
             "macd_osc": osc[i],
+            "adx": adx[i],
         })
     return out
+
+
+def _backfill_adx(rows: list[dict]) -> list[dict]:
+    """Compute ADX in-place for rows from older cache files that lack it."""
+    if not rows or "adx" in rows[-1]:
+        return rows
+    highs = [r.get("high") for r in rows]
+    lows = [r.get("low") for r in rows]
+    closes = [r.get("close") for r in rows]
+    adx = _adx_wilder(highs, lows, closes, 14)
+    for i, r in enumerate(rows):
+        r["adx"] = adx[i]
+    return rows
+
+
+def _find_recent_stock_cache(code: str, max_age_days: int = CACHE_RETENTION_DAYS
+                             ) -> tuple[list[dict], str | None] | None:
+    """Locate the freshest non-empty per-stock cache for `code` in the last
+    `max_age_days` trading-day tags (excluding today). Returns (rows, market)
+    or None. Used by `_load_stock` to do incremental refresh instead of a
+    full 13-month refetch."""
+    today = _trading_day()
+    candidates = []
+    for path in CACHE_DIR.glob(f"{code}_*.json"):
+        d = _parse_cache_date(path)
+        if d is None or d >= today:
+            continue
+        if (today - d).days > max_age_days:
+            continue
+        candidates.append((d, path))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    for _, path in candidates:
+        try:
+            with path.open() as f:
+                payload = json.load(f)
+            rows = payload.get("rows") or []
+            if rows:
+                return _backfill_adx(rows), payload.get("market")
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
 
 
 def _load_stock(code: str, output_rows: int) -> list[dict]:
     cache = _stock_cache(code)
     if cache.exists():
         with cache.open() as f:
-            return json.load(f).get("rows") or []
+            return _backfill_adx(json.load(f).get("rows") or [])
 
     with _lock_for(code):
         if cache.exists():
             with cache.open() as f:
-                return json.load(f).get("rows") or []
+                return _backfill_adx(json.load(f).get("rows") or [])
 
         # Always fetch enough to satisfy the largest reasonable request,
         # so a single day's cache covers any output window the user picks.
         target = max(output_rows, 200) + WEB_WARMUP_DAYS
-        market = _market_for(code)
+        prior = _find_recent_stock_cache(code)
+        market = (prior[1] if prior else None) or _market_for(code) or MARKET_TWSE
         if market == MARKET_OTC:
             month_fetcher = lambda y, m: twse.fetch_otc_month(y, m, code)
         else:
-            # Default to TWSE if unknown — keeps prior behavior for codes
-            # not yet in the company maps (e.g. brand-new listings).
-            market = MARKET_TWSE
             month_fetcher = lambda y, m: twse.fetch_stock_month(y, m, code)
+
+        if prior is not None:
+            prior_rows = prior[0]
+            last_iso = prior_rows[-1]["date"]
+            last_date = datetime.fromisoformat(last_iso).date()
+            now = datetime.now()
+            # Pull the current month, plus the prior month if last_date crosses
+            # a month boundary (covers month-flip refresh).
+            raw = month_fetcher(now.year, now.month)
+            if last_date.year != now.year or last_date.month != now.month:
+                prev_y, prev_m = twse.previous_month(now.year, now.month)
+                raw = month_fetcher(prev_y, prev_m) + raw
+            new_series = twse.parse_stock_rows(raw)
+            old_dates = {r["date"] for r in prior_rows}
+            base_series = [{
+                "date": datetime.fromisoformat(r["date"]).date(),
+                "high": r["high"], "low": r["low"],
+                "close": r["close"], "lots": r["lots"],
+            } for r in prior_rows]
+            additions = [s for s in new_series
+                         if s["date"].isoformat() not in old_dates]
+            if not additions:
+                # Nothing new — write today's cache pointing at the same series
+                # so subsequent calls skip the lookup.
+                taiex = _load_taiex(len(base_series))
+                rows = _compute_rows(base_series, taiex)
+                with cache.open("w") as f:
+                    json.dump({"code": code, "market": market, "rows": rows}, f)
+                return rows
+            combined = base_series + additions
+            combined.sort(key=lambda s: s["date"])
+            taiex = _load_taiex(len(combined))
+            rows = _compute_rows(combined, taiex)
+            with cache.open("w") as f:
+                json.dump({"code": code, "market": market, "rows": rows}, f)
+            return rows
+
+        # No usable prior cache — full 13-month fetch.
         raw = twse.fetch_recent_rows(month_fetcher, target, code)
         if not raw:
             return []
@@ -392,10 +551,11 @@ def _step_2_trend(window, last):
     ma10 = last.get("ma10")
     ma20 = last.get("ma20")
     ma60 = last.get("ma60")
+    adx = last.get("adx")
     # 5-day linear regression slope on MA20 — avoids 2-point jitter at flat tops
     ma20_vals = [row.get("ma20") for row in window[-5:]]
     base = {"step": 2, "title": "趨勢結構",
-            "condition": "MA10>MA20>MA60 且 MA20 五日回歸斜率向上"}
+            "condition": "MA10>MA20>MA60 + MA20 五日回歸斜率↑ + ADX>20"}
     if any(v is None for v in (ma10, ma20, ma60)) or None in ma20_vals or len(ma20_vals) < 5:
         return {**base, "light": "gray", "detail": "資料不足"}
     n = len(ma20_vals)
@@ -407,8 +567,12 @@ def _step_2_trend(window, last):
     c_slope = lr_slope > 0
     c_stack = (ma10 > ma20) and (ma20 > ma60)
     c_partial = ma10 > ma20
-    if c_stack and c_slope:
+    # ADX > 20 = 趨勢成形；< 20 視為盤整，降一級為黃燈
+    c_adx = (adx is not None) and (adx > 20)
+    if c_stack and c_slope and c_adx:
         light = "green"
+    elif c_stack and c_slope:
+        light = "yellow"  # MA + slope OK but 盤整 (ADX 弱)
     elif c_partial and c_slope:
         light = "yellow"
     elif c_partial or c_slope:
@@ -416,8 +580,10 @@ def _step_2_trend(window, last):
     else:
         light = "red"
     trend = "多頭排列" if c_stack else ("多頭" if c_partial else "空頭")
+    adx_str = f"ADX={adx:.1f}" if adx is not None else "ADX=NA"
     detail = (f"MA10={ma10:.1f}  MA20={ma20:.1f}  MA60={ma60:.1f}  "
-              f"{trend}  斜率:{'↑' if c_slope else '↓'}({lr_slope:+.2f})")
+              f"{trend}  斜率:{'↑' if c_slope else '↓'}({lr_slope:+.2f})  "
+              f"{adx_str}{'(趨勢成形)' if c_adx else '(盤整)'}")
     return {**base, "light": light, "detail": detail}
 
 
@@ -843,12 +1009,19 @@ HISTORY_DAYS = 15
 def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):
     """For each of the last `days` trading days, recompute the 7 lights and
     the overall summary light using a 20-day window ending at that day.
-    Step 7 (法人) reads only from cached T86 to avoid extra network calls;
-    missing dates show gray."""
+    Prefetches the T86 dates needed by step 8 so the institutional light
+    is populated for every history row, not just where cache happened to
+    exist. T86 is whole-market data shared across stocks, so the cost is
+    paid once per day across the whole watchlist."""
     if not full_rows:
         return []
-    out = []
     start = max(1, len(full_rows) - days)
+    needed_t86_start = max(0, start - 4)
+    for r in full_rows[needed_t86_start:]:
+        date_iso = r.get("date")
+        if date_iso:
+            _fetch_t86(date_iso, market)
+    out = []
     for end_idx in range(start, len(full_rows)):
         sub = full_rows[: end_idx + 1]
         window = sub[-20:]
@@ -1133,6 +1306,23 @@ def _watchlist_item(code: str) -> dict:
 app = FastAPI(title="TWSE Stock Viewer")
 
 
+@app.on_event("startup")
+def _on_startup() -> None:
+    """Run two cheap chores in the background so server boot stays snappy:
+    (1) purge stale dated caches, (2) warm the company-info cache so the
+    first watchlist load doesn't pay the ~1MB OpenAPI fetch."""
+    def _warm():
+        try:
+            _purge_old_caches()
+        except Exception:
+            pass
+        try:
+            _refresh_company_cache()
+        except Exception:
+            pass
+    threading.Thread(target=_warm, daemon=True).start()
+
+
 @app.get("/api/stock/{code}")
 def get_stock(code: str, rows: int = 30):
     _validate_code(code)
@@ -1206,8 +1396,9 @@ def watchlist_remove(code: str):
 def watchlist_refresh(code: str):
     """Drop today's cache for this stock and re-fetch from TWSE.
 
-    Synchronous and slow (~30-60s for first fetch). The frontend should
-    show a loading state while this runs.
+    With incremental update (using yesterday's cache as a base), this is
+    typically a few seconds. First-ever fetch with no prior cache still
+    walks back ~13 months (~30-60s).
     """
     _validate_code(code)
     cache = _stock_cache(code)
@@ -1217,6 +1408,30 @@ def watchlist_refresh(code: str):
     if not full:
         raise HTTPException(404, f"no data for {code}")
     return {"ok": True, "item": _watchlist_item(code)}
+
+
+@app.post("/api/watchlist/refresh")
+def watchlist_refresh_all():
+    """Refresh every code in the watchlist sequentially. Reuses shared
+    caches (TAIEX, T86, companies) across stocks, so the per-stock cost
+    is dominated by one TWSE STOCK_DAY call each (incremental path)."""
+    codes = _load_watchlist()
+    updated = []
+    failed = []
+    for code in codes:
+        try:
+            cache = _stock_cache(code)
+            if cache.exists():
+                cache.unlink()
+            full = _load_stock(code, 30)
+            if not full:
+                failed.append({"code": code, "error": "no data"})
+                continue
+            updated.append(_watchlist_item(code))
+        except Exception as e:  # noqa: BLE001
+            failed.append({"code": code, "error": str(e)})
+    return {"ok": True, "updated": len(updated), "failed": failed,
+            "items": updated}
 
 
 @app.get("/api/taiex/today")
