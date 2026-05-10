@@ -1430,10 +1430,11 @@ function renderWatchCard(item) {
   // Format date as MM/DD for compactness
   const asOf = item.as_of ? item.as_of.slice(5).replace("-", "/") : "";
   // Reversal-quality badge: only shown when ≥2/5 (per backtest, lower
-  // scores carry no signal). Hover for description.
+  // scores carry no signal). Compact "★ N" form to keep the card width
+  // predictable — full N-star display is on the detail page. Hover for desc.
   const rq = item.reversal_quality;
   const rqBadge = rq && rq.score >= 2
-    ? `<span class="wc-rq" title="反轉品質 ${rq.score}/${rq.max} · ${escapeHtml(rq.desc || "")}(觀察用)">${rq.stars}</span>`
+    ? `<span class="wc-rq" title="反轉品質 ${rq.score}/${rq.max} · ${escapeHtml(rq.desc || "")}(觀察用)">★ ${rq.score}/${rq.max}</span>`
     : "";
   return `
     <a class="watch-card ${sm.light}" href="#/stock/${code}" data-card-code="${code}" draggable="true">
