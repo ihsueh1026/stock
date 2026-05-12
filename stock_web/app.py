@@ -24,6 +24,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import fetch_twse_daily as twse  # noqa: E402
 
+# News/revenue extensions. These modules are intentionally lazy-loaded
+# at module level but their side effects (HTTP calls) only happen when
+# their public functions are called from an endpoint.
+from stock_web import news_fetcher, news_llm, revenue_fetcher  # noqa: E402
+
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -1445,6 +1450,58 @@ def get_stock(code: str, rows: int = 30):
         "rows": full[-rows:],
         "dashboard": compute_dashboard(full, code, market=market),
     }
+
+
+@app.get("/api/news/{code}")
+def get_news(code: str, days: int = 14):
+    """Return MOPS material announcements (重大訊息) for one stock.
+
+    Items: {code, name, date, roc_date, time, title} from MOPS plus
+    optional LLM-derived {sentiment, summary} when ANTHROPIC_API_KEY is
+    configured. Annotations are persisted back into the news cache so
+    each item is summarized at most once per trading day.
+    """
+    _validate_code(code)
+    if days < 1 or days > 60:
+        raise HTTPException(400, "days must be between 1 and 60")
+    with _lock_for(f"__news_{code}__"):
+        data = news_fetcher.load_or_fetch(code, days=days)
+        items = data.get("items") or []
+        if items and news_llm.is_available():
+            todo = [it for it in items
+                    if not (it.get("sentiment") and it.get("summary"))]
+            if todo:
+                news_llm.annotate(items, code=code)
+                try:
+                    with news_fetcher._cache_path(code).open("w") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                except OSError:
+                    pass
+    return {
+        "code": code,
+        "days": days,
+        "fetched_at": data.get("fetched_at"),
+        "llm_available": news_llm.is_available(),
+        "items": items,
+    }
+
+
+@app.get("/api/revenue/{code}")
+def get_revenue(code: str):
+    """Return the most-recent monthly revenue (月營收) snapshot.
+
+    Falls back one month if the latest expected month isn't yet
+    published. Returns `{available: false}` if the code isn't in
+    either month's market file (new listing, non-revenue entity, etc.).
+    """
+    _validate_code(code)
+    market = (_stock_cache_market(code)
+              or _market_for(code)
+              or MARKET_TWSE)
+    rev = revenue_fetcher.get_for_code(code, market=market)
+    if rev is None:
+        return {"code": code, "available": False, "market": market}
+    return {"available": True, **rev}
 
 
 @app.get("/api/watchlist")

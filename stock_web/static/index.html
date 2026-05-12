@@ -715,6 +715,69 @@
   .mini-table td.down { color: var(--price-down); }
   .zones-note { color: var(--text-muted); font-size: 12.5px; padding: 6px 0 12px; line-height: 1.6; }
 
+  /* News + Revenue panels — share .two-col grid above */
+  .news-card .news-days { font-weight: normal; font-size: 11px; margin-left: 6px; }
+  .news-list {
+    display: flex; flex-direction: column; gap: 10px;
+    max-height: 360px; overflow-y: auto; padding-right: 4px;
+  }
+  .news-item {
+    display: grid;
+    grid-template-columns: 84px 50px 1fr;
+    gap: 10px; align-items: baseline;
+    font-size: 13px; line-height: 1.45;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border-soft);
+  }
+  .news-item:last-child { border-bottom: none; }
+  .news-item .n-date { color: var(--text-faint); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .news-item .n-chip {
+    padding: 1px 6px; border-radius: 999px;
+    font-size: 11px; font-weight: bold;
+    justify-self: start; align-self: center;
+    white-space: nowrap;
+  }
+  .news-item .n-chip.pos { background: rgba(46, 204, 113, .15); color: var(--green); }
+  .news-item .n-chip.neg { background: rgba(231, 76, 60, .15); color: var(--red); }
+  .news-item .n-chip.neu { background: rgba(255, 255, 255, .06); color: var(--text-faint); }
+  .news-item .n-chip.unk { background: rgba(243, 156, 18, .15); color: var(--orange); }
+  .news-item .n-text { color: var(--text); word-break: break-word; }
+  .news-item .n-text .n-raw {
+    display: block; margin-top: 3px;
+    color: var(--text-faint); font-size: 11.5px; line-height: 1.4;
+  }
+  .news-empty { color: var(--text-faint); padding: 16px 0; text-align: center; font-size: 13px; }
+  #newsMeta { font-size: 11px; }
+
+  .revenue-body .rev-month {
+    font-size: 12px; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .revenue-body .rev-amount-wrap { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+  .revenue-body .rev-amount { font-size: 26px; font-weight: bold; color: var(--text); font-variant-numeric: tabular-nums; }
+  .revenue-body .rev-unit { font-size: 13px; color: var(--text-faint); }
+  .revenue-body .rev-cum { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
+  .revenue-body .rev-deltas {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .revenue-body .rev-delta {
+    background: rgba(255, 255, 255, .04);
+    border-radius: 6px; padding: 8px 6px;
+    text-align: center;
+  }
+  .revenue-body .rev-delta .rd-label {
+    font-size: 11px; color: var(--text-faint);
+    margin-bottom: 2px; letter-spacing: 0.3px;
+  }
+  .revenue-body .rev-delta .rd-value {
+    font-size: 15px; font-weight: bold;
+    font-variant-numeric: tabular-nums;
+  }
+  .revenue-body .rev-delta .rd-value.pos { color: var(--green); }
+  .revenue-body .rev-delta .rd-value.neg { color: var(--red); }
+  .revenue-body .rev-delta .rd-value.neu { color: var(--text-faint); }
+
   /* Charts */
   .charts {
     display: grid; grid-template-columns: 1fr; gap: 14px;
@@ -1023,6 +1086,24 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="two-col" id="newsRevCol" hidden>
+      <div class="card news-card">
+        <div class="card-title">
+          <span>消息面 <span class="meta news-days">過去 14 天</span></span>
+          <span class="meta" id="newsMeta"></span>
+        </div>
+        <div class="news-list" id="newsList">
+          <div class="news-empty">載入中...</div>
+        </div>
+      </div>
+      <div class="card revenue-card">
+        <div class="card-title">月營收</div>
+        <div class="revenue-body" id="revenueBody">
+          <div class="news-empty">載入中...</div>
+        </div>
       </div>
     </section>
 
@@ -1582,6 +1663,7 @@ async function loadStock(code) {
     document.getElementById("hero").hidden = false;
     document.getElementById("stepsCard").hidden = false;
     document.getElementById("twoCol").hidden = false;
+    document.getElementById("newsRevCol").hidden = false;
     document.getElementById("charts").hidden = false;
     document.getElementById("tableCard").hidden = false;
 
@@ -1603,9 +1685,126 @@ async function loadStock(code) {
     renderDistance(data.dashboard.distance || []);
     renderCharts(data.rows);
     renderTable(data.rows);
+    // News + revenue load async — they can be slow (MOPS + LLM call)
+    // and shouldn't block the main dashboard render.
+    loadNews(data.code);
+    loadRevenue(data.code);
   } catch (e) {
     setStatus(`錯誤:${e.message}`, true);
   }
+}
+
+async function loadNews(code) {
+  const list = document.getElementById("newsList");
+  const meta = document.getElementById("newsMeta");
+  if (list) list.innerHTML = '<div class="news-empty">載入消息面中...</div>';
+  if (meta) meta.textContent = "";
+  try {
+    const res = await fetch(`/api/news/${encodeURIComponent(code)}?days=14`);
+    if (!res.ok) {
+      list.innerHTML =
+        `<div class="news-empty">載入失敗:HTTP ${res.status}</div>`;
+      return;
+    }
+    renderNews(await res.json());
+  } catch (e) {
+    list.innerHTML =
+      `<div class="news-empty">載入失敗:${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadRevenue(code) {
+  const body = document.getElementById("revenueBody");
+  if (body) body.innerHTML = '<div class="news-empty">載入月營收中...</div>';
+  try {
+    const res = await fetch(`/api/revenue/${encodeURIComponent(code)}`);
+    if (!res.ok) {
+      body.innerHTML =
+        `<div class="news-empty">載入失敗:HTTP ${res.status}</div>`;
+      return;
+    }
+    renderRevenue(await res.json());
+  } catch (e) {
+    body.innerHTML =
+      `<div class="news-empty">載入失敗:${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderNews(data) {
+  const list = document.getElementById("newsList");
+  const meta = document.getElementById("newsMeta");
+  if (meta) {
+    meta.textContent = data.llm_available
+      ? "AI 摘要"
+      : "原始主旨(未設定 ANTHROPIC_API_KEY)";
+  }
+  const items = data.items || [];
+  if (!items.length) {
+    list.innerHTML = '<div class="news-empty">過去 14 天無重大訊息</div>';
+    return;
+  }
+  list.innerHTML = items.map(it => {
+    const sent = it.sentiment || "";
+    const cls = sent === "利多" ? "pos"
+              : sent === "利空" ? "neg"
+              : sent === "中性" ? "neu"
+              : "unk";
+    const chipLabel = sent || "—";
+    const chip = `<span class="n-chip ${cls}">${escapeHtml(chipLabel)}</span>`;
+    // Show summary as primary text; fall back to title when LLM unavailable.
+    const primary = it.summary
+      ? escapeHtml(it.summary)
+      : escapeHtml(it.title || "");
+    const showRaw = it.summary && it.title && it.summary !== it.title;
+    const raw = showRaw
+      ? `<span class="n-raw">${escapeHtml(it.title)}</span>` : "";
+    return `
+      <div class="news-item">
+        <span class="n-date">${escapeHtml(it.date || it.roc_date || "")}</span>
+        ${chip}
+        <span class="n-text">${primary}${raw}</span>
+      </div>`;
+  }).join("");
+}
+
+function renderRevenue(data) {
+  const body = document.getElementById("revenueBody");
+  if (!data.available) {
+    body.innerHTML = '<div class="news-empty">無月營收資料(可能是新上市或未公布)</div>';
+    return;
+  }
+  const yi = (data.revenue || 0) / 1e5;
+  const cumYi = (data.cum || 0) / 1e5;
+  const fmtPct = (v) => {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    const sign = v > 0 ? "+" : "";
+    return `${sign}${v.toFixed(2)}%`;
+  };
+  const pctCls = (v) => {
+    if (v === null || v === undefined || isNaN(v)) return "neu";
+    return v > 0 ? "pos" : v < 0 ? "neg" : "neu";
+  };
+  body.innerHTML = `
+    <div class="rev-month">${data.year}年 ${data.month} 月營收</div>
+    <div class="rev-amount-wrap">
+      <span class="rev-amount">${yi.toLocaleString("en-US", {maximumFractionDigits: 1})}</span>
+      <span class="rev-unit">億元</span>
+    </div>
+    <div class="rev-cum">累計 ${cumYi.toLocaleString("en-US", {maximumFractionDigits: 1})} 億元</div>
+    <div class="rev-deltas">
+      <div class="rev-delta">
+        <div class="rd-label">MoM</div>
+        <div class="rd-value ${pctCls(data.mom_pct)}">${fmtPct(data.mom_pct)}</div>
+      </div>
+      <div class="rev-delta">
+        <div class="rd-label">YoY</div>
+        <div class="rd-value ${pctCls(data.yoy_pct)}">${fmtPct(data.yoy_pct)}</div>
+      </div>
+      <div class="rev-delta">
+        <div class="rd-label">累計 YoY</div>
+        <div class="rd-value ${pctCls(data.cum_yoy_pct)}">${fmtPct(data.cum_yoy_pct)}</div>
+      </div>
+    </div>`;
 }
 
 function renderHero(dashboard, lastRow, code, info) {
