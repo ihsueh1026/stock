@@ -15,6 +15,8 @@ import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from typing import Optional
+
 import requests
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
@@ -27,7 +29,12 @@ import fetch_twse_daily as twse  # noqa: E402
 # News/revenue extensions. These modules are intentionally lazy-loaded
 # at module level but their side effects (HTTP calls) only happen when
 # their public functions are called from an endpoint.
-from stock_web import news_fetcher, news_llm, revenue_fetcher  # noqa: E402
+from stock_web import (  # noqa: E402
+    news_fetcher,
+    news_llm,
+    revenue_fetcher,
+    fundamentals_fetcher,
+)
 
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
@@ -1484,6 +1491,32 @@ def get_news(code: str, days: int = 14):
         "llm_available": news_llm.is_available(),
         "items": items,
     }
+
+
+@app.get("/api/fundamentals/{code}")
+def get_fundamentals(code: str, close: Optional[float] = None):
+    """Return the last 3 fiscal years (and most recent quarters if
+    published) of EPS / revenue / margins / book value per share.
+
+    When `close` is supplied, also returns a trailing P/E ratio
+    computed against the most recent annual EPS (skipping quarterly,
+    since broker apps quote PER on TTM/annual EPS — the comparable
+    basis).
+    """
+    _validate_code(code)
+    market = (_stock_cache_market(code)
+              or _market_for(code)
+              or MARKET_TWSE)
+    data = fundamentals_fetcher.fetch(code, market=market)
+    if not data.get("available"):
+        return {"code": code, "available": False, "market": market}
+    per = None
+    if close is not None:
+        per = fundamentals_fetcher.per_for(
+            fundamentals_fetcher.latest_annual_eps(data.get("periods") or []),
+            close,
+        )
+    return {**data, "per": per, "close_used": close}
 
 
 @app.get("/api/revenue/{code}")

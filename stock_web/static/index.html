@@ -715,6 +715,37 @@
   .mini-table td.down { color: var(--price-down); }
   .zones-note { color: var(--text-muted); font-size: 12.5px; padding: 6px 0 12px; line-height: 1.6; }
 
+  /* Fundamentals (annual EPS / margins) — full-width table card */
+  .fundamentals-card { margin-top: 0; }
+  .fundamentals-card .fund-source {
+    font-weight: normal; font-size: 11px; margin-left: 6px;
+    color: var(--text-faint);
+  }
+  .fundamentals-card #fundMeta { font-size: 12px; color: var(--text-faint); }
+  .fund-table .period-cell {
+    font-weight: 500; white-space: nowrap;
+  }
+  .fund-table .period-cell .period-tag {
+    display: inline-block; min-width: 22px; padding: 1px 6px;
+    border-radius: 4px; font-size: 10px; font-weight: bold;
+    margin-right: 6px; vertical-align: 1px;
+    background: rgba(255, 255, 255, .06); color: var(--text-faint);
+  }
+  .fund-table .period-cell.is-quarter .period-tag {
+    background: rgba(46, 204, 113, .15); color: var(--green);
+  }
+  .fund-table .period-cell.is-annual .period-tag {
+    background: rgba(243, 156, 18, .15); color: var(--orange);
+  }
+  .fund-table .pos { color: var(--green); }
+  .fund-table .neg { color: var(--red); }
+  .fund-table .neu { color: var(--text-faint); }
+  #fundMeta .per-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    background: rgba(255, 255, 255, .06); color: var(--text);
+    font-size: 12px; font-weight: 500; letter-spacing: 0.3px;
+  }
+
   /* News + Revenue panels — share .two-col grid above */
   .news-card .news-days { font-weight: normal; font-size: 11px; margin-left: 6px; }
   .news-card .news-head-right {
@@ -1093,6 +1124,29 @@
         <table class="mini-table" id="distTable">
           <thead>
             <tr><th>目標</th><th class="num">目標價</th><th class="num">距現價</th><th>說明</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card fundamentals-card" id="fundCard" hidden>
+      <div class="card-title">
+        <span>基本面 <span class="meta fund-source">近 3 年年度 + 最新季度(若已公佈)</span></span>
+        <span class="meta" id="fundMeta"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="mini-table fund-table" id="fundTable">
+          <thead>
+            <tr>
+              <th>期別</th>
+              <th class="num">EPS</th>
+              <th class="num">EPS YoY</th>
+              <th class="num">營收(億)</th>
+              <th class="num">營益率</th>
+              <th class="num">稅前淨利率</th>
+              <th class="num">每股淨值</th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -1678,6 +1732,7 @@ async function loadStock(code) {
     document.getElementById("hero").hidden = false;
     document.getElementById("stepsCard").hidden = false;
     document.getElementById("twoCol").hidden = false;
+    document.getElementById("fundCard").hidden = false;
     document.getElementById("newsRevCol").hidden = false;
     document.getElementById("charts").hidden = false;
     document.getElementById("tableCard").hidden = false;
@@ -1700,10 +1755,11 @@ async function loadStock(code) {
     renderDistance(data.dashboard.distance || []);
     renderCharts(data.rows);
     renderTable(data.rows);
-    // News + revenue load async — they can be slow (MOPS + LLM call)
-    // and shouldn't block the main dashboard render.
+    // News + revenue + fundamentals load async — they hit MOPS and
+    // shouldn't block the main dashboard render.
     loadNews(data.code);
     loadRevenue(data.code);
+    loadFundamentals(data.code, last.close);
   } catch (e) {
     setStatus(`錯誤:${e.message}`, true);
   }
@@ -1789,6 +1845,92 @@ function renderNews(data) {
         ${chip}
         <span class="n-text">${primary}${raw}</span>
       </div>`;
+  }).join("");
+}
+
+async function loadFundamentals(code, lastClose) {
+  const body = document.querySelector("#fundTable tbody");
+  const meta = document.getElementById("fundMeta");
+  if (body) {
+    body.innerHTML =
+      '<tr><td colspan="7" class="note" style="text-align:center;padding:14px;">' +
+      '載入基本面中...</td></tr>';
+  }
+  if (meta) meta.textContent = "";
+  try {
+    const url = lastClose
+      ? `/api/fundamentals/${encodeURIComponent(code)}?close=${lastClose}`
+      : `/api/fundamentals/${encodeURIComponent(code)}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      body.innerHTML =
+        `<tr><td colspan="7" class="note" style="text-align:center;padding:14px;">` +
+        `載入失敗:HTTP ${res.status}</td></tr>`;
+      return;
+    }
+    renderFundamentals(await res.json());
+  } catch (e) {
+    body.innerHTML =
+      `<tr><td colspan="7" class="note" style="text-align:center;padding:14px;">` +
+      `載入失敗:${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function renderFundamentals(data) {
+  const body = document.querySelector("#fundTable tbody");
+  const meta = document.getElementById("fundMeta");
+  if (!data.available) {
+    if (meta) meta.textContent = "";
+    body.innerHTML =
+      '<tr><td colspan="7" class="note" style="text-align:center;padding:14px;">' +
+      '此股票無基本面資料(新上市或非定期申報)</td></tr>';
+    return;
+  }
+  if (meta) {
+    meta.innerHTML = (data.per != null)
+      ? `<span class="per-badge">本益比 (PER) <strong>${data.per.toFixed(1)}</strong> 倍</span>`
+      : "";
+  }
+  const periods = data.periods || [];
+  if (!periods.length) {
+    body.innerHTML =
+      '<tr><td colspan="7" class="note" style="text-align:center;padding:14px;">' +
+      '基本面資料為空</td></tr>';
+    return;
+  }
+  const fmtPct = (v) => {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    const sign = v > 0 ? "+" : "";
+    return `${sign}${v.toFixed(2)}%`;
+  };
+  const fmtNum = (v, digits = 2) => {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    return v.toFixed(digits);
+  };
+  const fmtYi = (v) => {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    return (v / 1e5).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  };
+  const pctCls = (v) => {
+    if (v === null || v === undefined || isNaN(v)) return "neu";
+    return v > 0 ? "pos" : v < 0 ? "neg" : "neu";
+  };
+  body.innerHTML = periods.map((p) => {
+    const isQ = p.type === "quarter";
+    const tag = isQ ? "季" : "年";
+    const cls = isQ ? "is-quarter" : "is-annual";
+    return `
+      <tr>
+        <td class="period-cell ${cls}">
+          <span class="period-tag">${tag}</span>${escapeHtml(p.label)}
+        </td>
+        <td class="num">${fmtNum(p.eps)}</td>
+        <td class="num ${pctCls(p.eps_yoy_pct)}">${fmtPct(p.eps_yoy_pct)}</td>
+        <td class="num">${fmtYi(p.revenue)}</td>
+        <td class="num">${fmtNum(p.op_margin_pct)}%</td>
+        <td class="num">${fmtNum(p.pretax_margin_pct)}%</td>
+        <td class="num">${fmtNum(p.book_value_per_share)}</td>
+      </tr>`;
   }).join("");
 }
 
