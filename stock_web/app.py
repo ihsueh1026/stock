@@ -34,6 +34,9 @@ from stock_web import (  # noqa: E402
     news_llm,
     revenue_fetcher,
     fundamentals_fetcher,
+    eps_history_fetcher,
+    dividend_fetcher,
+    industry_pe_fetcher,
 )
 
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
@@ -547,6 +550,56 @@ def _sigma(window):
     return statistics.stdev(changes) / 100.0
 
 
+def _divergence(window):
+    """Detect price-vs-RSI6 divergence over the last 20 bars.
+
+    Splits the window into a "recent" tail (last 5 bars) and a "prior"
+    band (10 bars before that). Compares price highs/lows with the
+    matching RSI6 highs/lows.
+
+      - 頂背離 (bearish): price makes new high but RSI doesn't follow.
+      - 底背離 (bullish): price makes new low but RSI holds higher.
+
+    Returns {"kind": "bearish"|"bullish"|None, "detail": str|None}.
+    The kind is used in step 3 to soft-downgrade green→yellow on
+    bearish divergence (a real warning), and surfaced as an alert chip
+    for either direction.
+    """
+    if len(window) < 15:
+        return {"kind": None, "detail": None}
+    recent = window[-5:]
+    prior = window[-15:-5]
+    rp = [(r.get("close"), r.get("rsi6")) for r in recent]
+    pp = [(r.get("close"), r.get("rsi6")) for r in prior]
+    rp = [(c, s) for c, s in rp if c is not None and s is not None]
+    pp = [(c, s) for c, s in pp if c is not None and s is not None]
+    if len(rp) < 3 or len(pp) < 5:
+        return {"kind": None, "detail": None}
+
+    r_high_close, r_high_rsi = max(rp, key=lambda x: x[0])
+    p_high_close, p_high_rsi = max(pp, key=lambda x: x[0])
+    r_low_close, r_low_rsi = min(rp, key=lambda x: x[0])
+    p_low_close, p_low_rsi = min(pp, key=lambda x: x[0])
+
+    # Require at least a clear price move (0.5%) and an RSI gap of 3pt
+    # to avoid noise-level matches near consolidation.
+    if (r_high_close > p_high_close * 1.005
+            and r_high_rsi < p_high_rsi - 3):
+        return {
+            "kind": "bearish",
+            "detail": (f"頂背離:價 {p_high_close:.2f}→{r_high_close:.2f} "
+                       f"但 RSI6 {p_high_rsi:.0f}→{r_high_rsi:.0f}"),
+        }
+    if (r_low_close < p_low_close * 0.995
+            and r_low_rsi > p_low_rsi + 3):
+        return {
+            "kind": "bullish",
+            "detail": (f"底背離:價 {p_low_close:.2f}→{r_low_close:.2f} "
+                       f"但 RSI6 {p_low_rsi:.0f}→{r_low_rsi:.0f}"),
+        }
+    return {"kind": None, "detail": None}
+
+
 def _step_1_market(window, last):
     taiex_today = last.get("taiex")
     taiex_vals = [r["taiex"] for r in window if r.get("taiex") is not None]
@@ -599,7 +652,7 @@ def _step_2_trend(window, last):
     return {**base, "light": light, "detail": detail}
 
 
-def _step_3_momentum(window, last, prev):
+def _step_3_momentum(window, last, prev, divergence=None):
     needed = (last.get("ma5"), last.get("ma10"), last.get("rsi6"),
               last.get("kd_k"), last.get("kd_d"),
               prev.get("rsi6"), prev.get("kd_k"), prev.get("kd_d"))
@@ -633,11 +686,21 @@ def _step_3_momentum(window, last, prev):
     else:
         light = "red"
 
+    # 頂背離 → soft-downgrade green (bullish flow with hidden weakness).
+    # 底背離 doesn't upgrade — it's a heads-up, not a confirmation.
+    div_tag = ""
+    if divergence and divergence.get("kind") == "bearish":
+        if light == "green":
+            light = "yellow"
+        div_tag = "  ⚠頂背離"
+    elif divergence and divergence.get("kind") == "bullish":
+        div_tag = "  💡底背離"
+
     kd_cross_today = "✓" if (k_p < d_p and k > d) else "✗"
     suffix = "(自<30反彈首破50)" if rsi6_first_50 else ""
     detail = (f"MA金叉:{'✓' if c_ma else '✗'}  "
               f"KD金叉:{kd_cross_today}(K={k:.0f})  "
-              f"RSI6:{rsi6:.0f}{suffix}")
+              f"RSI6:{rsi6:.0f}{suffix}{div_tag}")
     return {**base, "light": light, "detail": detail}
 
 
@@ -887,6 +950,112 @@ def _step_8_institutional(window, code, market=MARKET_TWSE, cached_only=False):
     return {**base, "light": light, "detail": detail}
 
 
+def _compute_alerts(window, code=None, market=MARKET_TWSE,
+                    divergence=None, cached_only=False):
+    """Return a list of alert chips for the current view.
+
+    Alerts are observations layered on top of the 7-step lights — they
+    don't gate any signal, they just surface stuff a trader would
+    glance at: 爆量 / 量縮 / 法人連 N 日同向 / 背離.
+
+    Each entry is {kind, icon, text, tone} where tone ∈ {info,warn,danger}.
+    `cached_only` skips T86 network fetches (passed True from the history
+    strip if we ever extend alerts there; current call sites use False).
+    """
+    alerts: list[dict] = []
+
+    # --- Volume burst / dry-up vs last 20 bars (excluding today) ---
+    vols = [r.get("lots") for r in window[:-1] if r.get("lots") is not None]
+    today_vol = window[-1].get("lots") if window else None
+    if today_vol and len(vols) >= 5:
+        recent20 = vols[-20:]
+        avg = sum(recent20) / len(recent20)
+        if avg > 0:
+            ratio = today_vol / avg
+            if len(recent20) >= 5:
+                sd = statistics.stdev(recent20)
+            else:
+                sd = 0
+            if today_vol > avg + 2 * sd and ratio >= 1.5:
+                alerts.append({
+                    "kind": "volume_burst",
+                    "icon": "🔥",
+                    "tone": "warn",
+                    "text": f"爆量 ({ratio:.1f}x 20日均, {today_vol:,}張)",
+                })
+            elif ratio < 0.5:
+                alerts.append({
+                    "kind": "volume_dry",
+                    "icon": "💤",
+                    "tone": "info",
+                    "text": f"量縮 ({ratio:.1f}x 20日均, {today_vol:,}張)",
+                })
+
+    # --- Institutional consecutive-direction streaks (last 10 dates) ---
+    if code and len(window) >= 3:
+        recent_dates = [r.get("date") for r in window[-10:] if r.get("date")]
+        f_vals: list[int] = []
+        t_vals: list[int] = []
+        for date_iso in recent_dates:
+            if cached_only:
+                t86 = _t86_cached_only(date_iso, market)
+                info = t86.get(code) if t86 else None
+            else:
+                info = _fetch_t86(date_iso, market).get(code)
+            if not info:
+                continue
+            f_vals.append(info.get("f", 0))
+            t_vals.append(info.get("t", 0))
+
+        def _streak(values):
+            buy = sell = 0
+            for v in reversed(values):
+                if v > 0 and sell == 0:
+                    buy += 1
+                elif v < 0 and buy == 0:
+                    sell += 1
+                else:
+                    break
+            return buy, sell
+
+        if f_vals:
+            fb, fs = _streak(f_vals)
+            if fb >= 5:
+                alerts.append({"kind": "foreign_buy_streak", "icon": "🏦",
+                               "tone": "info",
+                               "text": f"外資連買 {fb} 日"})
+            elif fs >= 5:
+                alerts.append({"kind": "foreign_sell_streak", "icon": "🏦",
+                               "tone": "warn",
+                               "text": f"外資連賣 {fs} 日"})
+        if t_vals:
+            tb, ts = _streak(t_vals)
+            if tb >= 4:
+                alerts.append({"kind": "trust_buy_streak", "icon": "📈",
+                               "tone": "info",
+                               "text": f"投信連買 {tb} 日"})
+            elif ts >= 4:
+                alerts.append({"kind": "trust_sell_streak", "icon": "📉",
+                               "tone": "warn",
+                               "text": f"投信連賣 {ts} 日"})
+
+    # --- Divergence (re-using already-computed result from step 3) ---
+    if divergence and divergence.get("kind") == "bearish":
+        alerts.append({
+            "kind": "bearish_divergence", "icon": "⚠",
+            "tone": "danger",
+            "text": divergence.get("detail") or "頂背離",
+        })
+    elif divergence and divergence.get("kind") == "bullish":
+        alerts.append({
+            "kind": "bullish_divergence", "icon": "💡",
+            "tone": "info",
+            "text": divergence.get("detail") or "底背離",
+        })
+
+    return alerts
+
+
 def _summary(steps):
     greens = sum(1 for s in steps if s["light"] == "green")
     yellows = sum(1 for s in steps if s["light"] == "yellow")
@@ -997,14 +1166,20 @@ def _distance(last, sigma):
     ]
 
 
-def _compute_steps(window, code, market=MARKET_TWSE, t86_cached_only=False):
+def _compute_steps(window, code, market=MARKET_TWSE, t86_cached_only=False,
+                   divergence=None):
     """Run the 7 step checks on a 20-day window. Returns the steps list with
-    UI step numbers (1..7) assigned. Window must have ≥2 rows."""
+    UI step numbers (1..7) assigned. Window must have ≥2 rows.
+
+    `divergence` can be passed in to share the result with the alert
+    layer; if None, it's computed fresh."""
     last = window[-1]
     prev = window[-2]
+    if divergence is None:
+        divergence = _divergence(window)
     s1 = _step_1_market(window, last)
     s2 = _step_2_trend(window, last)
-    s3 = _step_3_momentum(window, last, prev)
+    s3 = _step_3_momentum(window, last, prev, divergence=divergence)
     s6 = _step_6_holding(window, last, prev)
     s4 = _step_4_volume(window, last, prev, s3["light"], s6["light"])
     s7 = _step_7_exit(window, last, prev)
@@ -1146,15 +1321,17 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
     if not full_rows:
         return {"as_of": None, "sigma": None, "steps": [],
                 "summary": None, "price_zones": None, "distance": [],
-                "history": [], "reversal_quality": None}
+                "history": [], "reversal_quality": None, "alerts": []}
     window = full_rows[-20:]
     last = window[-1]
     if len(window) < 2:
         return {"as_of": last["date"], "sigma": None, "steps": [],
                 "summary": None, "price_zones": None, "distance": [],
-                "history": [], "reversal_quality": None}
+                "history": [], "reversal_quality": None, "alerts": []}
     sigma = _sigma(window)
-    steps = _compute_steps(window, code, market=market, t86_cached_only=False)
+    divergence = _divergence(window)
+    steps = _compute_steps(window, code, market=market,
+                           t86_cached_only=False, divergence=divergence)
     s6 = steps[4]  # 持有
 
     summary = _summary(steps)
@@ -1162,6 +1339,8 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
     distance = _distance(last, sigma) + _stoploss_levels(last, sigma)
     history = _history_lights(full_rows, code, market=market)
     reversal = _reversal_quality(window)
+    alerts = _compute_alerts(window, code=code, market=market,
+                             divergence=divergence, cached_only=False)
 
     return {
         "as_of": last["date"],
@@ -1172,6 +1351,7 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
         "price_zones": zones,
         "distance": distance,
         "history": history,
+        "alerts": alerts,
     }
 
 
@@ -1517,6 +1697,133 @@ def get_fundamentals(code: str, close: Optional[float] = None):
             close,
         )
     return {**data, "per": per, "close_used": close}
+
+
+_BACKTEST_STATS_PATH = (Path(__file__).resolve().parent.parent
+                        / "backtest" / "data" / "_summary_stats.json")
+_backtest_stats_cache: dict | None = None
+_backtest_stats_mtime: float = 0.0
+
+
+def _load_backtest_stats() -> dict | None:
+    """Read the pre-built backtest aggregate. Re-reads on mtime change so
+    `python3 -m backtest.build_stats` updates are picked up without restart."""
+    global _backtest_stats_cache, _backtest_stats_mtime
+    if not _BACKTEST_STATS_PATH.exists():
+        return None
+    try:
+        m = _BACKTEST_STATS_PATH.stat().st_mtime
+    except OSError:
+        return None
+    if _backtest_stats_cache is not None and m == _backtest_stats_mtime:
+        return _backtest_stats_cache
+    try:
+        with _BACKTEST_STATS_PATH.open() as f:
+            _backtest_stats_cache = json.load(f)
+        _backtest_stats_mtime = m
+    except (OSError, json.JSONDecodeError):
+        return None
+    return _backtest_stats_cache
+
+
+@app.get("/api/backtest_stats")
+def get_backtest_stats(label: Optional[str] = None):
+    """Return pooled historical forward-return stats for a summary label.
+
+    The data comes from `backtest/build_stats.py` which event-studies the
+    7-step dashboard across all stocks in `backtest/data/`. This is
+    OBSERVATIONAL — the backtest's overall conclusion was that no signal
+    has cross-stock alpha. We surface the numbers so users can see what
+    "歷史上看到此狀態" actually meant in this sample.
+
+    Without `label`, returns the full payload. With `label`, returns just
+    that label's bucket (or `available=false` if missing).
+    """
+    data = _load_backtest_stats()
+    if not data:
+        return {"available": False, "reason": "backtest stats not built"}
+    if label is None:
+        return {"available": True, **data}
+    sig = (data.get("signals") or {}).get(label)
+    if not sig:
+        return {"available": False, "label": label, "reason": "no stats for label"}
+    return {
+        "available": True,
+        "label": label,
+        "stocks": data.get("stocks", []),
+        "generated_at": data.get("generated_at"),
+        "note": data.get("note", ""),
+        **sig,
+    }
+
+
+@app.get("/api/industry_pe/{code}")
+def get_industry_pe(code: str, per: Optional[float] = None):
+    """Return industry-median P/E for the stock's industry bucket.
+
+    Pass `per` (this stock's own P/E) so the response includes a
+    side-by-side comparison without the frontend having to read it
+    twice from the fundamentals endpoint.
+
+    Stats are computed across BOTH TWSE + TPEX, grouped by 產業別.
+    Loss-making (negative or zero PER) stocks are excluded. Buckets
+    with fewer than 5 samples have no median.
+    """
+    _validate_code(code)
+    _refresh_company_cache()
+    info = _company_info(code)
+    industry = (info.get("industry") or "").strip()
+    if not industry:
+        return {"code": code, "available": False, "reason": "unknown industry"}
+    stats = industry_pe_fetcher.for_industry(
+        industry,
+        _company_cache_mem["twse"],
+        _company_cache_mem["otc"],
+    )
+    if not stats:
+        return {"code": code, "available": False, "industry": industry,
+                "reason": "no stats"}
+    out = {"code": code, "available": True, **stats, "my_pe": per}
+    median = stats.get("median_pe")
+    if per is not None and median is not None:
+        out["delta_pct"] = round((per - median) / median * 100, 1)
+    return out
+
+
+@app.get("/api/dividend/{code}")
+def get_dividend(code: str, close: Optional[float] = None):
+    """Return the most recent annual cash dividend + yield.
+
+    For TWSE, the source file only carries yield, so we derive
+    cash-dividend ≈ yield × close / 100 when `close` is supplied.
+    For TPEX, both fields come straight from the source.
+    """
+    _validate_code(code)
+    market = (_stock_cache_market(code)
+              or _market_for(code)
+              or MARKET_TWSE)
+    info = dividend_fetcher.get_for_code(code, market=market,
+                                         last_close=close)
+    if info is None:
+        return {"code": code, "available": False, "market": market}
+    return {"available": True, **info}
+
+
+@app.get("/api/eps_history/{code}")
+def get_eps_history(code: str, years: int = 3):
+    """Return multi-year quarterly EPS for trend visualization.
+
+    `years` clamps to [1, 5]. Each year requires 4 MOPS round-trips
+    if not cached. Cache filenames are `eps_q_{code}_{Y}Q{N}.json`
+    (no date suffix → permanent for published quarters).
+    """
+    _validate_code(code)
+    years = max(1, min(int(years or 3), 5))
+    market = (_stock_cache_market(code)
+              or _market_for(code)
+              or MARKET_TWSE)
+    data = eps_history_fetcher.get_history(code, market=market, years=years)
+    return data
 
 
 @app.get("/api/revenue/{code}")

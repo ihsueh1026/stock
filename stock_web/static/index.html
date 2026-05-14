@@ -566,6 +566,68 @@
   .hero-overall .overall-history .history-strip .h-dot {
     width: 12px; height: 12px; border-radius: 3px;
   }
+  .hero-overall .alerts-row {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 12.5px;
+  }
+  .hero-overall .backtest-card {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12px;
+  }
+  .hero-overall .backtest-card .bt-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .hero-overall .backtest-card .bt-title {
+    color: var(--text); font-weight: 500; font-size: 12.5px;
+  }
+  .hero-overall .backtest-card .bt-meta {
+    color: var(--text-faint); font-size: 11px;
+  }
+  .hero-overall .backtest-card .bt-grid {
+    display: grid; grid-template-columns: 60px 1fr 1fr 1fr;
+    gap: 4px 8px; font-variant-numeric: tabular-nums;
+    font-size: 11.5px;
+  }
+  .hero-overall .backtest-card .bt-grid .bt-th {
+    color: var(--text-faint); font-size: 10.5px;
+  }
+  .hero-overall .backtest-card .bt-grid .bt-val.pos { color: var(--green); }
+  .hero-overall .backtest-card .bt-grid .bt-val.neg { color: var(--red); }
+  .hero-overall .backtest-card .bt-foot {
+    margin-top: 6px; color: var(--text-faint); font-size: 10.5px;
+  }
+  .hero-overall .alerts-row .al-label {
+    color: var(--text-faint); letter-spacing: 0.4px;
+  }
+  .alert-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: 12px;
+    font-size: 12px; line-height: 1.4;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-soft);
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .alert-chip.info {
+    background: rgba(86,156,214,0.12);
+    border-color: rgba(86,156,214,0.35);
+    color: #9cd6ff;
+  }
+  .alert-chip.warn {
+    background: rgba(245,209,102,0.12);
+    border-color: rgba(245,209,102,0.4);
+    color: #f5d76e;
+  }
+  .alert-chip.danger {
+    background: rgba(220,80,76,0.14);
+    border-color: rgba(220,80,76,0.4);
+    color: #ff9d99;
+  }
+  .alert-chip .al-icon { font-size: 13px; }
   .hero-overall .reversal-quality {
     margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--border-soft);
@@ -745,6 +807,52 @@
     background: rgba(255, 255, 255, .06); color: var(--text);
     font-size: 12px; font-weight: 500; letter-spacing: 0.3px;
   }
+  #fundMeta .div-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    background: rgba(86,156,214,.12); color: #9cd6ff;
+    font-size: 12px; font-weight: 500; margin-left: 6px;
+    border: 1px solid rgba(86,156,214,.25);
+  }
+  #fundMeta .ind-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    background: rgba(255,255,255,.04); color: var(--text-muted);
+    font-size: 12px; font-weight: 500; margin-left: 6px;
+    border: 1px solid var(--border-soft);
+  }
+  #fundMeta .ind-badge .delta-pos { color: var(--red); }
+  #fundMeta .ind-badge .delta-neg { color: var(--green); }
+  #fundMeta .ind-badge .delta-neu { color: var(--text-faint); }
+  .eps-trend {
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .eps-trend-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .eps-trend-title { font-size: 13px; color: var(--text); font-weight: 500; }
+  .eps-trend-legend {
+    font-size: 11px; color: var(--text-faint);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .eps-trend-legend .legend-bar {
+    display: inline-block; width: 10px; height: 10px;
+    background: var(--green); opacity: 0.7; border-radius: 1px;
+    margin-right: 2px;
+  }
+  .eps-trend-legend .legend-line {
+    display: inline-block; width: 14px; height: 2px;
+    background: #f5d76e; margin-right: 2px; margin-bottom: 2px;
+  }
+  .eps-trend-legend .legend-sep { color: var(--text-faint); margin: 0 2px; }
+  .eps-trend-svg svg { width: 100%; height: auto; display: block; }
+  .eps-trend-svg .eps-bar { fill: var(--green); opacity: 0.7; }
+  .eps-trend-svg .eps-bar.neg { fill: var(--red); }
+  .eps-trend-svg .eps-bar:hover { opacity: 1; }
+  .eps-trend-svg .yoy-line { fill: none; stroke: #f5d76e; stroke-width: 1.5; }
+  .eps-trend-svg .yoy-dot { fill: #f5d76e; }
+  .eps-trend-svg .axis-text { fill: var(--text-faint); font-size: 10px; }
+  .eps-trend-svg .gridline { stroke: var(--border-soft); stroke-width: 0.5; }
 
   /* News + Revenue panels — share .two-col grid above */
   .news-card .news-days { font-weight: normal; font-size: 11px; margin-left: 6px; }
@@ -1050,6 +1158,10 @@
           <span class="oh-label">15 日趨勢</span>
           <span class="history-strip" id="overallHistoryStrip"></span>
         </div>
+        <div class="alerts-row" id="alertsRow" hidden>
+          <span class="al-label">提醒</span>
+          <span id="alertsStrip"></span>
+        </div>
         <div class="reversal-quality" id="reversalQuality" hidden>
           <div class="rq-head">
             <span class="rq-stars" id="rqStars"></span>
@@ -1057,6 +1169,14 @@
             <span class="rq-note" id="rqNote"></span>
           </div>
           <ul class="rq-checks" id="rqChecks"></ul>
+        </div>
+        <div class="backtest-card" id="backtestCard" hidden>
+          <div class="bt-head">
+            <span class="bt-title">歷史此狀態後的報酬 <span class="bt-meta" id="btSubtitle"></span></span>
+            <span class="bt-meta" id="btSampleMeta"></span>
+          </div>
+          <div class="bt-grid" id="btGrid"></div>
+          <div class="bt-foot" id="btFoot"></div>
         </div>
         <details class="overall-rules">
           <summary>判定規則</summary>
@@ -1150,6 +1270,17 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
+      <div class="eps-trend" id="epsTrend" hidden>
+        <div class="eps-trend-head">
+          <span class="eps-trend-title">季 EPS 趨勢</span>
+          <span class="eps-trend-legend">
+            <span class="legend-bar"></span>單季 EPS
+            <span class="legend-sep">·</span>
+            <span class="legend-line"></span>同期 YoY%
+          </span>
+        </div>
+        <div class="eps-trend-svg" id="epsTrendSvg"></div>
       </div>
     </section>
 
@@ -1739,7 +1870,14 @@ async function loadStock(code) {
 
     renderHero(data.dashboard, last, data.code, data.info);
     renderOverallHistory(data.dashboard.history || []);
+    renderAlerts(data.dashboard.alerts || []);
     renderReversalQuality(data.dashboard.reversal_quality);
+    if (data.dashboard.summary && data.dashboard.summary.label) {
+      loadBacktestStats(data.dashboard.summary.label);
+    } else {
+      const c = document.getElementById("backtestCard");
+      if (c) c.hidden = true;
+    }
     if (data.info && data.info.short_name) {
       const crumb = document.getElementById("crumb");
       const ind = data.info.industry
@@ -1868,12 +2006,182 @@ async function loadFundamentals(code, lastClose) {
         `載入失敗:HTTP ${res.status}</td></tr>`;
       return;
     }
-    renderFundamentals(await res.json());
+    const fundData = await res.json();
+    renderFundamentals(fundData);
+    // Once we know this stock's own P/E, kick off the industry-median
+    // comparison (purely additive — the badge can fail to load and the
+    // table still renders).
+    if (fundData && fundData.available && fundData.per != null) {
+      loadIndustryPe(code, fundData.per);
+    }
   } catch (e) {
     body.innerHTML =
       `<tr><td colspan="7" class="note" style="text-align:center;padding:14px;">` +
       `載入失敗:${escapeHtml(e.message)}</td></tr>`;
   }
+  // EPS trend loads after the main table; chart is large so it shouldn't
+  // block the table's first paint, but lives in the same card so we kick
+  // it off here. Don't await — let it stream in.
+  loadEpsHistory(code);
+  loadDividend(code, lastClose);
+}
+
+async function loadIndustryPe(code, myPer) {
+  const meta = document.getElementById("fundMeta");
+  if (!meta) return;
+  try {
+    const u = `/api/industry_pe/${encodeURIComponent(code)}?per=${myPer}`;
+    const res = await fetch(u);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.available || d.median_pe == null) return;
+    const median = d.median_pe;
+    const delta = d.delta_pct;
+    let deltaTxt = "";
+    let deltaCls = "delta-neu";
+    if (delta != null) {
+      deltaCls = delta > 5 ? "delta-pos" : delta < -5 ? "delta-neg" : "delta-neu";
+      deltaTxt = ` <span class="${deltaCls}">(${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%)</span>`;
+    }
+    const title = `${escapeHtml(d.industry)} · n=${d.count} (TWSE+TPEX)`;
+    const chip = `<span class="ind-badge" title="${title}">` +
+      `${escapeHtml(d.industry)} 中位 PER <strong>${median.toFixed(1)}</strong>` +
+      deltaTxt + `</span>`;
+    meta.insertAdjacentHTML("beforeend", chip);
+  } catch (e) {
+    // optional
+  }
+}
+
+async function loadDividend(code, lastClose) {
+  const meta = document.getElementById("fundMeta");
+  if (!meta) return;
+  try {
+    const u = lastClose
+      ? `/api/dividend/${encodeURIComponent(code)}?close=${lastClose}`
+      : `/api/dividend/${encodeURIComponent(code)}`;
+    const res = await fetch(u);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.available) return;
+    const y = d.yield_pct;
+    const c = d.cash_dividend;
+    if (y == null && c == null) return;
+    const y_s = y != null ? `${y.toFixed(2)}%` : "—";
+    const c_s = c != null ? `${c.toFixed(2)} 元` : "—";
+    // Append next to the existing PER badge without clobbering it.
+    const chip = `<span class="div-badge" title="現金股利 / 殖利率${d.derived ? " (殖利率反推現金股利)" : ""}">` +
+      `現金股利 <strong>${c_s}</strong> · 殖利率 <strong>${y_s}</strong>` +
+      `</span>`;
+    meta.insertAdjacentHTML("beforeend", chip);
+  } catch (e) {
+    // optional — swallow
+  }
+}
+
+async function loadEpsHistory(code) {
+  const wrap = document.getElementById("epsTrend");
+  const svgWrap = document.getElementById("epsTrendSvg");
+  if (wrap) wrap.hidden = true;
+  if (svgWrap) svgWrap.innerHTML = "";
+  try {
+    const res = await fetch(`/api/eps_history/${encodeURIComponent(code)}?years=3`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.available || !data.periods || data.periods.length === 0) return;
+    renderEpsTrend(data);
+  } catch (e) {
+    // Trend is optional; swallow errors.
+  }
+}
+
+function renderEpsTrend(data) {
+  const wrap = document.getElementById("epsTrend");
+  const svgWrap = document.getElementById("epsTrendSvg");
+  if (!wrap || !svgWrap) return;
+  const periods = (data.periods || []).filter(p => p.eps !== null && p.eps !== undefined);
+  if (periods.length < 4) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+
+  // Layout: 720 x 200 viewBox, scales to container width.
+  const W = 720, H = 200;
+  const PAD_L = 36, PAD_R = 40, PAD_T = 14, PAD_B = 26;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+
+  const eps = periods.map(p => p.eps);
+  const yoy = periods.map(p => (p.eps_yoy_pct == null || isNaN(p.eps_yoy_pct)) ? null : p.eps_yoy_pct);
+  const epsMin = Math.min(0, ...eps);
+  const epsMax = Math.max(0, ...eps);
+  const epsRange = epsMax - epsMin || 1;
+  // Pad 10% headroom
+  const epsLo = epsMin - epsRange * 0.05;
+  const epsHi = epsMax + epsRange * 0.1;
+  const epsSpan = epsHi - epsLo;
+
+  const yoyVals = yoy.filter(v => v != null);
+  let yoyLo = -50, yoyHi = 100;
+  if (yoyVals.length) {
+    const mn = Math.min(...yoyVals);
+    const mx = Math.max(...yoyVals);
+    const pad = Math.max(20, (mx - mn) * 0.15);
+    yoyLo = mn - pad; yoyHi = mx + pad;
+  }
+  const yoySpan = (yoyHi - yoyLo) || 1;
+
+  const n = periods.length;
+  const barW = plotW / (n + 1);
+  const xCenter = (i) => PAD_L + barW * (i + 0.7);
+  const yEps = (v) => PAD_T + plotH * (1 - (v - epsLo) / epsSpan);
+  const yYoy = (v) => PAD_T + plotH * (1 - (v - yoyLo) / yoySpan);
+  const yZero = yEps(0);
+
+  // Build SVG
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">`;
+  // gridlines: 0 line for EPS axis
+  svg += `<line class="gridline" x1="${PAD_L}" y1="${yZero}" x2="${W - PAD_R}" y2="${yZero}" />`;
+  // EPS bars
+  periods.forEach((p, i) => {
+    if (p.eps == null) return;
+    const cx = xCenter(i);
+    const top = yEps(Math.max(0, p.eps));
+    const bot = yEps(Math.min(0, p.eps));
+    const h = Math.max(1, bot - top);
+    const cls = p.eps < 0 ? "eps-bar neg" : "eps-bar";
+    const w = barW * 0.55;
+    svg += `<rect class="${cls}" x="${cx - w / 2}" y="${top}" width="${w}" height="${h}">`;
+    const yoyTxt = p.eps_yoy_pct == null ? "" : ` YoY=${p.eps_yoy_pct >= 0 ? "+" : ""}${p.eps_yoy_pct.toFixed(1)}%`;
+    svg += `<title>${escapeHtml(p.label)}  EPS=${p.eps.toFixed(2)}${yoyTxt}</title>`;
+    svg += `</rect>`;
+  });
+  // YoY line + dots
+  const pts = periods.map((p, i) =>
+    p.eps_yoy_pct == null ? null : { x: xCenter(i), y: yYoy(p.eps_yoy_pct), v: p.eps_yoy_pct, label: p.label }
+  ).filter(p => p);
+  if (pts.length >= 2) {
+    const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    svg += `<path class="yoy-line" d="${d}" />`;
+  }
+  pts.forEach((p) => {
+    svg += `<circle class="yoy-dot" cx="${p.x}" cy="${p.y}" r="2.5">`;
+    svg += `<title>${escapeHtml(p.label)} YoY=${p.v >= 0 ? "+" : ""}${p.v.toFixed(1)}%</title>`;
+    svg += `</circle>`;
+  });
+  // x-axis labels — only show every other label if too many
+  const labelEvery = n > 10 ? 2 : 1;
+  periods.forEach((p, i) => {
+    if (i % labelEvery !== 0) return;
+    svg += `<text class="axis-text" x="${xCenter(i)}" y="${H - PAD_B + 14}" text-anchor="middle">${escapeHtml(p.label)}</text>`;
+  });
+  // y-axis (left=EPS)
+  svg += `<text class="axis-text" x="${PAD_L - 4}" y="${PAD_T + 8}" text-anchor="end">${epsHi.toFixed(1)}</text>`;
+  svg += `<text class="axis-text" x="${PAD_L - 4}" y="${yZero + 3}" text-anchor="end">0</text>`;
+  if (epsLo < 0) svg += `<text class="axis-text" x="${PAD_L - 4}" y="${PAD_T + plotH}" text-anchor="end">${epsLo.toFixed(1)}</text>`;
+  // y-axis (right=YoY%)
+  svg += `<text class="axis-text" x="${W - PAD_R + 4}" y="${PAD_T + 8}" text-anchor="start">${yoyHi.toFixed(0)}%</text>`;
+  svg += `<text class="axis-text" x="${W - PAD_R + 4}" y="${PAD_T + plotH}" text-anchor="start">${yoyLo.toFixed(0)}%</text>`;
+  svg += `</svg>`;
+  svgWrap.innerHTML = svg;
 }
 
 function renderFundamentals(data) {
@@ -2069,6 +2377,88 @@ function renderHero(dashboard, lastRow, code, info) {
     <span>量 ${fmtInt(lastRow.lots)} 張</span>
     ${sigmaTxt ? `<span>${sigmaTxt}</span>` : ""}
   `;
+}
+
+async function loadBacktestStats(label) {
+  const card = document.getElementById("backtestCard");
+  if (!card) return;
+  card.hidden = true;
+  try {
+    const u = `/api/backtest_stats?label=${encodeURIComponent(label)}`;
+    const res = await fetch(u);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.available || !d.horizons) return;
+    renderBacktestStats(label, d);
+  } catch (e) {
+    // optional
+  }
+}
+
+function renderBacktestStats(label, d) {
+  const card = document.getElementById("backtestCard");
+  const grid = document.getElementById("btGrid");
+  const subtitle = document.getElementById("btSubtitle");
+  const sampleMeta = document.getElementById("btSampleMeta");
+  const foot = document.getElementById("btFoot");
+  if (!card || !grid) return;
+
+  const horizons = ["5", "10", "20", "40"];
+  const rows = horizons
+    .map(h => ({ h, ...d.horizons[h] }))
+    .filter(r => r.n);
+  if (rows.length === 0) { card.hidden = true; return; }
+
+  subtitle.textContent = `(${label} · ${d.events_total || 0} 次)`;
+  sampleMeta.textContent = `樣本:${(d.stocks || []).join(", ")}`;
+
+  const fmtPct = (v) => {
+    if (v == null || isNaN(v)) return "—";
+    const sign = v > 0 ? "+" : "";
+    return `${sign}${(v * 100).toFixed(1)}%`;
+  };
+  const fmtWin = (v) => {
+    if (v == null || isNaN(v)) return "—";
+    return `${(v * 100).toFixed(0)}%`;
+  };
+  const cls = (v) => (v == null || isNaN(v)) ? "" :
+    (v > 0.002 ? "pos" : v < -0.002 ? "neg" : "");
+
+  const header = [
+    `<span class="bt-th">期間</span>`,
+    `<span class="bt-th">報酬中位</span>`,
+    `<span class="bt-th">勝率</span>`,
+    `<span class="bt-th">vs 隨機</span>`,
+  ];
+  const body = rows.flatMap(r => {
+    const delta = (r.ret_med != null && r.rand_med != null)
+      ? (r.ret_med - r.rand_med) : null;
+    return [
+      `<span>${r.h} 日</span>`,
+      `<span class="bt-val ${cls(r.ret_med)}">${fmtPct(r.ret_med)}</span>`,
+      `<span class="bt-val">${fmtWin(r.win_pct)}</span>`,
+      `<span class="bt-val ${cls(delta)}">${fmtPct(delta)}</span>`,
+    ];
+  });
+  grid.innerHTML = [...header, ...body].join("");
+  foot.textContent = "觀察用,非進場依據 · 隨機基準 = 同期間樣本內任意日的前向報酬";
+  card.hidden = false;
+}
+
+function renderAlerts(alerts) {
+  const row = document.getElementById("alertsRow");
+  const strip = document.getElementById("alertsStrip");
+  if (!alerts || alerts.length === 0) {
+    row.hidden = true;
+    strip.innerHTML = "";
+    return;
+  }
+  row.hidden = false;
+  strip.innerHTML = alerts.map(a => {
+    const tone = a.tone || "info";
+    const icon = a.icon ? `<span class="al-icon">${escapeHtml(a.icon)}</span>` : "";
+    return `<span class="alert-chip ${tone}">${icon}<span>${escapeHtml(a.text || "")}</span></span>`;
+  }).join("");
 }
 
 function renderReversalQuality(rq) {
