@@ -31,9 +31,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from stock_web import app as _app  # noqa: E402
 from stock_web.app import (  # noqa: E402
     _compute_rows, _step_1_market, _step_2_trend, _step_3_momentum,
-    _step_4_volume, _step_6_holding, _step_7_exit, _summary,
+    _step_4_volume, _step_6_holding, _step_7_exit,
+    _step_8_institutional, _summary, _market_for,
+    MARKET_TWSE, MARKET_OTC,
 )
 from backtest.variants import VARIANTS  # noqa: E402
 
@@ -42,6 +45,37 @@ _STEP3_FN = _step_3_momentum
 _POST_FILTER = None  # callable (rows, idx, steps) -> bool, or None
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
+
+# Historical T86 dumps populated by `backtest/prefetch_t86.py`. Production
+# stock_web/app.py only retains 7 days of T86 — that window is way too
+# short for an event study. We patch the production `_t86_cached_only`
+# lookup to read from these long-history files instead.
+_BT_T86_DIR = DATA_DIR / "t86"
+_BT_T86OTC_DIR = DATA_DIR / "t86otc"
+
+
+def _bt_t86_cached_only(date_iso: str, market: str = MARKET_TWSE):
+    """Backtest replacement for stock_web.app._t86_cached_only.
+
+    Looks under backtest/data/t86/ and t86otc/. Returns None when the
+    file isn't present — the step-8 helper interprets that as
+    "skip this day from the institutional window" rather than failing,
+    so step 8 degrades to `gray` only when too many days are missing.
+    """
+    base = _BT_T86_DIR if market == MARKET_TWSE else _BT_T86OTC_DIR
+    p = base / f"{date_iso.replace('-', '')}.json"
+    if not p.exists():
+        return None
+    try:
+        with p.open() as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+# Override production lookup. Done at import time so any downstream call
+# of `_step_8_institutional(..., cached_only=True)` reads our archives.
+_app._t86_cached_only = _bt_t86_cached_only
 
 HORIZONS = [5, 10, 20, 40]
 
@@ -133,9 +167,16 @@ def load_series(code: str) -> list[dict]:
     } for r in data["rows"]]
 
 
-def _compute_lights(rows: list[dict], end_idx: int) -> tuple[dict, list[dict]]:
+def _compute_lights(rows: list[dict], end_idx: int,
+                    code: str | None = None,
+                    market: str = MARKET_TWSE) -> tuple[dict, list[dict]]:
     """Return (summary, steps) at rows[end_idx] using only rows[:end_idx+1].
-    Step 8 fixed at gray (no T86 history)."""
+
+    Step 7 (法人) reads from the backtest's long-history T86 archive
+    (populated by `backtest/prefetch_t86.py`). When `code` is None, or
+    when too few T86 files cover the 5-day window, step 7 falls back
+    to gray — which mirrors the production behavior when T86 is missing.
+    """
     sub = rows[: end_idx + 1]
     window = sub[-20:]
     if len(window) < 2:
@@ -148,31 +189,47 @@ def _compute_lights(rows: list[dict], end_idx: int) -> tuple[dict, list[dict]]:
     s6 = _step_6_holding(window, last, prev)
     s4 = _step_4_volume(window, last, prev, s3["light"], s6["light"])
     s7 = _step_7_exit(window, last, prev)
-    s8 = {"step": 8, "title": "法人認養", "light": "gray", "detail": "skip"}
+    if code:
+        # cached_only=True forces the production step-8 helper to read
+        # via the patched `_t86_cached_only` — no network calls.
+        s8 = _step_8_institutional(window, code, market=market,
+                                   cached_only=True)
+    else:
+        s8 = {"step": 8, "title": "法人認養",
+              "light": "gray", "detail": "no code"}
     steps = [s1, s2, s3, s4, s6, s7, s8]
     for i, s in enumerate(steps, 1):
         s["step"] = i
     return _summary(steps), steps
 
 
-def light_at(rows: list[dict], end_idx: int) -> dict:
-    return _compute_lights(rows, end_idx)[0]
+def light_at(rows: list[dict], end_idx: int,
+             code: str | None = None,
+             market: str = MARKET_TWSE) -> dict:
+    return _compute_lights(rows, end_idx, code=code, market=market)[0]
 
 
 def find_events(rows: list[dict], sig_def: dict,
-                start: int = 60) -> list[int]:
+                start: int = 60,
+                code: str | None = None,
+                market: str = MARKET_TWSE) -> list[int]:
     """Return indices where the configured signal first triggers.
 
     sig_def is one of SIGNAL_DEFS values:
       {"type":"summary","label":...} — summary label transition
       {"type":"step","step_idx":N,"light":...} — step-N light transition
-    Applies _POST_FILTER if set by the active variant."""
+    Applies _POST_FILTER if set by the active variant.
+
+    `code` + `market` are forwarded to `_compute_lights` so step 7
+    (法人) reads the right T86 archive for this stock; passing None
+    keeps step 7 grey and matches the old behavior.
+    """
     events = []
     if sig_def["type"] == "summary":
         target = sig_def["label"]
         prev = None
         for i in range(start, len(rows)):
-            s, steps = _compute_lights(rows, i)
+            s, steps = _compute_lights(rows, i, code=code, market=market)
             cur = s.get("label")
             if cur == target and prev != target:
                 if _POST_FILTER is None or _POST_FILTER(rows, i, steps):
@@ -184,7 +241,7 @@ def find_events(rows: list[dict], sig_def: dict,
         target = sig_def["light"]
         prev = None
         for i in range(start, len(rows)):
-            _, steps = _compute_lights(rows, i)
+            _, steps = _compute_lights(rows, i, code=code, market=market)
             cur = steps[idx]["light"] if len(steps) > idx else None
             if cur == target and prev != target:
                 if _POST_FILTER is None or _POST_FILTER(rows, i, steps):
@@ -195,7 +252,7 @@ def find_events(rows: list[dict], sig_def: dict,
         pred = sig_def["predicate"]
         prev = False
         for i in range(start, len(rows)):
-            _, steps = _compute_lights(rows, i)
+            _, steps = _compute_lights(rows, i, code=code, market=market)
             try:
                 cur = bool(pred(rows, i, steps))
             except Exception:
@@ -310,7 +367,9 @@ LIGHT_CHAR = {"green": "G", "yellow": "Y", "red": "R",
 
 
 def dump_events(rows: list[dict], events: list[int],
-                horizons: list[int] = (5, 10, 20)) -> None:
+                horizons: list[int] = (5, 10, 20),
+                code: str | None = None,
+                market: str = MARKET_TWSE) -> None:
     """Per-event line: date, close, n-day stock returns, n-day alpha, step lights.
     Useful for human review of why a signal fired and how it played out."""
     h_cols = " ".join(f"r{h:<3}" for h in horizons)
@@ -321,7 +380,7 @@ def dump_events(rows: list[dict], events: list[int],
         r = rows[idx]
         rets = [forward_return(rows, idx, h) for h in horizons]
         alphas = [forward_alpha(rows, idx, h) for h in horizons]
-        _, steps = _compute_lights(rows, idx)
+        _, steps = _compute_lights(rows, idx, code=code, market=market)
         light_str = "".join(LIGHT_CHAR.get(s["light"], "?") for s in steps)
         s3_detail = steps[2].get("detail", "")
         s7_detail = steps[5].get("detail", "")
@@ -347,12 +406,13 @@ def run_study(code: str, signals: list[str], dump: bool = False) -> None:
     if not rows:
         print(f"[{code}] no rows after compute")
         return
+    market = _market_for(code) or MARKET_TWSE
     print(f"\n=== {code}  ({rows[0]['date']} ~ {rows[-1]['date']}, "
-          f"{len(rows)} rows) ===")
+          f"{len(rows)} rows, market={market}) ===")
 
     for sig in signals:
         sig_def = SIGNAL_DEFS[sig]
-        events = find_events(rows, sig_def)
+        events = find_events(rows, sig_def, code=code, market=market)
         if sig_def["type"] == "summary":
             tag = sig_def["label"]
         elif sig_def["type"] == "step":
@@ -387,7 +447,7 @@ def run_study(code: str, signals: list[str], dump: bool = False) -> None:
                   f"{base['win_pct']*100:>5.1f}%")
 
         if dump:
-            dump_events(rows, events)
+            dump_events(rows, events, code=code, market=market)
 
 
 def main() -> None:

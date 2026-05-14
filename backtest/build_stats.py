@@ -49,7 +49,7 @@ from backtest.study import (  # noqa: E402
     load_taiex, load_series,
     find_events, forward_return, forward_alpha, summarize,
 )
-from stock_web.app import _compute_rows  # noqa: E402
+from stock_web.app import _compute_rows, _market_for, MARKET_TWSE  # noqa: E402
 
 OUT_PATH = DATA_DIR / "_summary_stats.json"
 
@@ -84,11 +84,12 @@ def main() -> None:
         rows = _compute_rows(series, taiex)
         if not rows:
             continue
-        print(f"  {code}: {len(rows)} rows", file=sys.stderr)
+        market = _market_for(code) or MARKET_TWSE
+        print(f"  {code}: {len(rows)} rows ({market})", file=sys.stderr)
         for sig_key in summary_signals:
             sig_def = SIGNAL_DEFS[sig_key]
             label = sig_def["label"]
-            events = find_events(rows, sig_def)
+            events = find_events(rows, sig_def, code=code, market=market)
             events_count[label] = events_count.get(label, 0) + len(events)
             if not events:
                 continue
