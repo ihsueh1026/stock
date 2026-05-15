@@ -146,6 +146,13 @@ def main() -> None:
     # Chip-condition pools — keyed by chip kind, one bucket per chip.
     chip_pools: dict[str, dict[int, dict[str, list]]] = {}
     chip_events_count: dict[str, int] = {}
+    # Per-code chip pools — parallel to chip_pools but keyed by code.
+    # Lets the dashboard show "this specific stock's history with this
+    # chip" instead of the pooled 30-stock median, because per-stock
+    # same-sign rates run 50-72% on the validated chips (i.e. the pool
+    # mean hides real heterogeneity).
+    chip_pools_per_code: dict[str, dict[str, dict[int, dict[str, list]]]] = {}
+    chip_events_count_per_code: dict[str, dict[str, int]] = {}
     summary_signals = [k for k, v in SIGNAL_DEFS.items() if v["type"] == "summary"]
 
     for code in codes:
@@ -218,24 +225,30 @@ def main() -> None:
                         if a is not None:
                             bhi["alpha"].append(a)
 
-        # Per-code chip events — only computed once per code, then
-        # poured into the global chip_pools across all horizons.
+        # Per-code chip events — computed once per code; same indices
+        # feed both the global pool and this stock's own per-code pool.
         chip_evts = _chip_events_for_code(rows, code, market)
         for chip_key, idxs in chip_evts.items():
             chip_events_count[chip_key] = (
                 chip_events_count.get(chip_key, 0) + len(idxs))
+            chip_events_count_per_code.setdefault(chip_key, {})[code] = len(idxs)
             if not idxs:
                 continue
             buckets = chip_pools.setdefault(chip_key, {})
+            code_buckets = chip_pools_per_code.setdefault(
+                chip_key, {}).setdefault(code, {})
             for h in HORIZONS:
                 bh = buckets.setdefault(h, {"ret": [], "alpha": []})
+                bh_c = code_buckets.setdefault(h, {"ret": [], "alpha": []})
                 for i in idxs:
                     r = forward_return(rows, i, h)
                     a = forward_alpha(rows, i, h)
                     if r is not None:
                         bh["ret"].append(r)
+                        bh_c["ret"].append(r)
                     if a is not None:
                         bh["alpha"].append(a)
+                        bh_c["alpha"].append(a)
 
     def _serialize_horizons(buckets: dict, include_rand: bool = True) -> dict:
         per_horizon: dict[str, dict] = {}
@@ -280,9 +293,19 @@ def main() -> None:
     out_chips: dict[str, dict] = {}
     for chip_key in CHIP_KINDS:
         buckets = chip_pools.get(chip_key, {})
+        per_code_pools = chip_pools_per_code.get(chip_key, {})
+        per_code_counts = chip_events_count_per_code.get(chip_key, {})
+        per_stock: dict[str, dict] = {}
+        for code, code_buckets in per_code_pools.items():
+            per_stock[code] = {
+                "events_total": per_code_counts.get(code, 0),
+                "horizons": _serialize_horizons(code_buckets,
+                                                include_rand=False),
+            }
         out_chips[chip_key] = {
             "events_total": chip_events_count.get(chip_key, 0),
             "horizons": _serialize_horizons(buckets, include_rand=False),
+            "per_stock": per_stock,
         }
 
     out = {

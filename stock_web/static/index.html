@@ -1875,7 +1875,7 @@ async function loadStock(code) {
       const steps = data.dashboard.steps || [];
       const instLight = (steps[6] && steps[6].light) || null;
       const alerts = data.dashboard.alerts || [];
-      loadBacktestStats(data.dashboard.summary.label, instLight, alerts);
+      loadBacktestStats(data.dashboard.summary.label, instLight, alerts, data.code);
     } else {
       const c = document.getElementById("backtestCard");
       if (c) c.hidden = true;
@@ -2411,7 +2411,7 @@ function _pickChipFromAlerts(alerts) {
   return null;
 }
 
-async function loadBacktestStats(label, instLight, alerts) {
+async function loadBacktestStats(label, instLight, alerts, code) {
   const card = document.getElementById("backtestCard");
   if (!card) return;
   card.hidden = true;
@@ -2436,7 +2436,7 @@ async function loadBacktestStats(label, instLight, alerts) {
       renderBacktestPlaceholder();
       return;
     }
-    renderBacktestStats(picked.alert, d);
+    renderBacktestStats(picked.alert, d, code);
   } catch (e) {
     renderBacktestPlaceholder();
   }
@@ -2455,7 +2455,7 @@ function renderBacktestPlaceholder() {
   card.hidden = false;
 }
 
-function renderBacktestStats(alert, d) {
+function renderBacktestStats(alert, d, code) {
   const card = document.getElementById("backtestCard");
   const grid = document.getElementById("btGrid");
   const subtitle = document.getElementById("btSubtitle");
@@ -2463,13 +2463,29 @@ function renderBacktestStats(alert, d) {
   if (!card || !grid) return;
 
   const horizons = ["5", "10", "20", "40"];
+
+  // Prefer per-stock track record when the current code is in the
+  // backtest universe AND has enough events for stability. The pool
+  // median hides 50-72% per-stock breadth — a real signal split that
+  // matters for the specific stock the user is looking at. Threshold 3
+  // because per-stock samples typically run 4-17 events on AVOID/LEAD
+  // and 1-7 on the reversal+綠 chips.
+  const MIN_PER_STOCK_N = 3;
+  const perStock = (d.per_stock && code) ? d.per_stock[code] : null;
+  const usePerStock = perStock && (perStock.events_total || 0) >= MIN_PER_STOCK_N;
+  const source = usePerStock ? perStock : d;
   const rows = horizons
-    .map(h => ({ h, ...(d.horizons[h] || {}) }))
+    .map(h => ({ h, ...(source.horizons[h] || {}) }))
     .filter(r => r.n);
   if (rows.length === 0) { card.hidden = true; return; }
 
   const chipText = (alert.icon ? alert.icon + " " : "") + (alert.text || "");
-  subtitle.textContent = `(${chipText} · ${d.events_total || 0} 次)`;
+  if (usePerStock) {
+    subtitle.textContent =
+      `(${chipText} · 該檔 ${perStock.events_total} 次 · 全池 ${d.events_total} 次)`;
+  } else {
+    subtitle.textContent = `(${chipText} · 全池 ${d.events_total || 0} 次)`;
+  }
 
   const fmtPct = (v) => {
     if (v == null || isNaN(v)) return "—";
@@ -2483,21 +2499,37 @@ function renderBacktestStats(alert, d) {
   const cls = (v) => (v == null || isNaN(v)) ? "" :
     (v > 0.002 ? "pos" : v < -0.002 ? "neg" : "");
 
+  // When showing per-stock, add a "vs 全池" column so the user sees
+  // how this stock historically deviates from the pooled median —
+  // some stocks invert the signal (2454 AVOID is actually +5%).
+  const lastHeader = usePerStock ? "vs 全池" : "n";
   const header = [
     `<span class="bt-th">期間</span>`,
     `<span class="bt-th">中位 alpha</span>`,
     `<span class="bt-th">勝率</span>`,
-    `<span class="bt-th">n</span>`,
+    `<span class="bt-th">${lastHeader}</span>`,
   ];
-  const body = rows.flatMap(r => [
-    `<span>${r.h} 日</span>`,
-    `<span class="bt-val ${cls(r.alpha_med)}">${fmtPct(r.alpha_med)}</span>`,
-    `<span class="bt-val">${fmtWin(r.alpha_win)}</span>`,
-    `<span class="bt-val">${r.n != null ? r.n : "—"}</span>`,
-  ]);
+  const body = rows.flatMap(r => {
+    let lastCell;
+    if (usePerStock) {
+      const pool = (d.horizons || {})[r.h] || {};
+      const delta = (r.alpha_med != null && pool.alpha_med != null)
+        ? (r.alpha_med - pool.alpha_med) : null;
+      lastCell = `<span class="bt-val ${cls(delta)}">${fmtPct(delta)}</span>`;
+    } else {
+      lastCell = `<span class="bt-val">${r.n != null ? r.n : "—"}</span>`;
+    }
+    return [
+      `<span>${r.h} 日</span>`,
+      `<span class="bt-val ${cls(r.alpha_med)}">${fmtPct(r.alpha_med)}</span>`,
+      `<span class="bt-val">${fmtWin(r.alpha_win)}</span>`,
+      lastCell,
+    ];
+  });
   grid.innerHTML = [...header, ...body].join("");
-  foot.textContent =
-    "alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 觀察用,非進場依據";
+  foot.textContent = usePerStock
+    ? "alpha 為該檔自身歷史命中 · vs 全池 = 該檔 − 30 檔池中位 · 觀察用"
+    : "alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 觀察用,非進場依據";
   card.hidden = false;
 }
 
