@@ -36,6 +36,7 @@ from stock_web.app import (  # noqa: E402
     _compute_rows, _step_1_market, _step_2_trend, _step_3_momentum,
     _step_4_volume, _step_6_holding, _step_7_exit,
     _step_8_institutional, _summary, _market_for,
+    _t86_looks_complete,
     MARKET_TWSE, MARKET_OTC,
 )
 from backtest.variants import VARIANTS  # noqa: E402
@@ -54,23 +55,42 @@ _BT_T86_DIR = DATA_DIR / "t86"
 _BT_T86OTC_DIR = DATA_DIR / "t86otc"
 
 
+# Process-local memo: T86 dump per (market, date). Each file is 700KB-1MB
+# and JSON-parsed; without memo, the event scan re-reads ~5 files per
+# (stock, day, signal) tuple — pushes a full study from seconds to ~1 hour.
+# With memo the first scan of each date pays once.
+_T86_MEMO: dict[tuple[str, str], dict] = {}
+
+
 def _bt_t86_cached_only(date_iso: str, market: str = MARKET_TWSE):
     """Backtest replacement for stock_web.app._t86_cached_only.
 
-    Looks under backtest/data/t86/ and t86otc/. Returns None when the
-    file isn't present — the step-8 helper interprets that as
-    "skip this day from the institutional window" rather than failing,
+    Reads from backtest/data/t86/ and t86otc/, memoizing in-process.
+    Returns None when the file isn't present — the step-8 helper
+    interprets that as "skip this day from the institutional window",
     so step 8 degrades to `gray` only when too many days are missing.
     """
+    compact = date_iso.replace("-", "")
+    memo_key = (market, compact)
+    if memo_key in _T86_MEMO:
+        return _T86_MEMO[memo_key]
     base = _BT_T86_DIR if market == MARKET_TWSE else _BT_T86OTC_DIR
-    p = base / f"{date_iso.replace('-', '')}.json"
+    p = base / f"{compact}.json"
     if not p.exists():
+        _T86_MEMO[memo_key] = None
         return None
     try:
         with p.open() as f:
-            return json.load(f)
+            data = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return None
+        data = None
+    # Old prefetch_t86 runs (pre-validator) may have saved partial dumps.
+    # Treat those as "missing" so step 8 degrades to gray instead of
+    # making a buy/sell call from broken data.
+    if data is not None and not _t86_looks_complete(data, market):
+        data = None
+    _T86_MEMO[memo_key] = data
+    return data
 
 
 # Override production lookup. Done at import time so any downstream call

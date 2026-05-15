@@ -142,6 +142,30 @@ T86_HTTP_HEADERS = {
     "Accept": "application/json",
 }
 
+# Minimum 4-digit-stock count we expect in a healthy T86 dump. TWSE
+# occasionally serves a truncated response (~780-810 4-digit codes
+# vs the usual ~1070) — these are missing rows for many real stocks,
+# not just warrants. We reject those and let the caller retry.
+# OTC normally has ~800-825 4-digit codes; below ~700 is suspect.
+T86_TWSE_MIN_STOCKS = 900
+T86_OTC_MIN_STOCKS = 700
+
+
+def _t86_looks_complete(out: dict, market: str) -> bool:
+    """Heuristic: does this T86 dump appear to be a full snapshot?
+
+    Counts 4-digit stock codes (typical TWSE/OTC listings) and compares
+    against a market-specific threshold. Truncated dumps tend to be
+    missing 200-300 listings even though they still include warrants
+    and ETFs, so total entry count alone isn't enough.
+    """
+    if not out:
+        return False
+    n_4digit = sum(1 for c in out if len(c) == 4 and c.isdigit())
+    threshold = (T86_TWSE_MIN_STOCKS if market == MARKET_TWSE
+                 else T86_OTC_MIN_STOCKS)
+    return n_4digit >= threshold
+
 
 def _t86_cache(date_compact: str, market: str = MARKET_TWSE) -> Path:
     prefix = "t86" if market == MARKET_TWSE else "t86otc"
@@ -149,15 +173,23 @@ def _t86_cache(date_compact: str, market: str = MARKET_TWSE) -> Path:
 
 
 def _t86_cached_only(date_iso: str, market: str = MARKET_TWSE) -> dict | None:
-    """Return cached T86 dict for the date, or None if not cached. No network."""
+    """Return cached T86 dict for the date, or None if not cached. No network.
+
+    Also returns None if the cached dump looks truncated — a defensive
+    catch in case an older partial-response cache slipped in before
+    the write-time guard was added.
+    """
     cache = _t86_cache(date_iso.replace("-", ""), market)
     if not cache.exists():
         return None
     try:
         with cache.open() as f:
-            return json.load(f)
+            data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
+    if not _t86_looks_complete(data, market):
+        return None
+    return data
 
 
 def _fetch_t86(date_iso: str, market: str = MARKET_TWSE) -> dict:
@@ -191,7 +223,16 @@ def _fetch_t86(date_iso: str, market: str = MARKET_TWSE) -> dict:
             out = _fetch_t86_twse(date_compact)
         else:
             out = _fetch_t86_otc(date_iso)
-        if out:  # only persist non-empty results
+        # Reject truncated responses so the cache stays clean and the
+        # next call retries. Returning {} here matches the "non-trading
+        # day" path — callers already tolerate empty result.
+        if out and not _t86_looks_complete(out, market):
+            print(f"  [warn] T86 {market} {date_compact} looks truncated "
+                  f"({sum(1 for c in out if len(c)==4 and c.isdigit())} "
+                  f"4-digit stocks); not caching",
+                  file=sys.stderr)
+            return {}
+        if out:  # only persist complete results
             try:
                 with cache.open("w") as f:
                     json.dump(out, f)
