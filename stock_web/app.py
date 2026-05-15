@@ -2131,6 +2131,7 @@ def watchlist_add(code: str):
     if code not in codes:
         codes.append(code)
         _save_watchlist(codes)
+    _invalidate_today_chips_cache()
     return {"ok": True, "codes": codes, "item": _watchlist_item(code)}
 
 
@@ -2143,6 +2144,7 @@ def watchlist_remove(code: str):
         _save_watchlist(codes)
     for f in CACHE_DIR.glob(f"{code}_*.json"):
         f.unlink(missing_ok=True)
+    _invalidate_today_chips_cache()
     return {"ok": True, "codes": codes}
 
 
@@ -2161,7 +2163,92 @@ def watchlist_refresh(code: str):
     full = _load_stock(code, 30)
     if not full:
         raise HTTPException(404, f"no data for {code}")
+    _invalidate_today_chips_cache()
     return {"ok": True, "item": _watchlist_item(code)}
+
+
+def _scan_chip_alerts_for_code(code: str) -> list[dict] | None:
+    """Run full compute_dashboard on a cached stock and return only the
+    stat_key-bearing alerts (the chips we display historical stats for).
+    Returns None when the stock has no cache or no rows."""
+    try:
+        cache = _stock_cache(code)
+        if not cache.exists():
+            return None
+        with cache.open() as f:
+            payload = json.load(f)
+        rows = payload.get("rows") or []
+        if not rows:
+            return None
+        market = payload.get("market") or _market_for(code) or MARKET_TWSE
+        info = _company_info(code)
+        short_name = info.get("short_name") or code
+        dash = compute_dashboard(rows, code, market=market)
+        out = []
+        for a in dash.get("alerts") or []:
+            if not a.get("stat_key"):
+                continue
+            out.append({
+                "code": code,
+                "short_name": short_name,
+                "kind": a.get("kind"),
+                "stat_key": a.get("stat_key"),
+                "icon": a.get("icon", ""),
+                "text": a.get("text", ""),
+                "tone": a.get("tone", "info"),
+            })
+        return out
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# Daily cache for the watchlist chip scan. Computing the full dashboard
+# (history + alerts) for every watchlist code takes 15-45s the first
+# time after a restart; the result is stable within a trading day so
+# we cache it. Invalidates when the trading-day tag changes or when
+# the watchlist is mutated (add/remove/refresh).
+_today_chips_cache: dict = {"date": None, "data": None}
+
+
+def _invalidate_today_chips_cache() -> None:
+    _today_chips_cache["date"] = None
+    _today_chips_cache["data"] = None
+
+
+@app.get("/api/watchlist/chips")
+def watchlist_chips():
+    """Scan every cached watchlist stock and group today's firing chip
+    alerts (stat_key-bearing) by chip kind. Lets the frontend show a
+    "今日觸發" summary without round-tripping per stock.
+
+    Uses a small thread pool to parallelize the per-stock dashboard
+    compute. Result is cached for the trading day so subsequent calls
+    are O(1).
+    """
+    today = _today_tag()
+    cached = _today_chips_cache.get("data")
+    if _today_chips_cache.get("date") == today and cached is not None:
+        return {**cached, "cached": True}
+
+    from concurrent.futures import ThreadPoolExecutor
+    codes = _load_watchlist()
+    fires: dict[str, list[dict]] = {}
+    if not codes:
+        result = {"chips": fires, "total": 0, "scanned": 0}
+        _today_chips_cache["date"] = today
+        _today_chips_cache["data"] = result
+        return {**result, "cached": False}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for results in ex.map(_scan_chip_alerts_for_code, codes):
+            if not results:
+                continue
+            for r in results:
+                fires.setdefault(r["stat_key"], []).append(r)
+    total = sum(len(v) for v in fires.values())
+    result = {"chips": fires, "total": total, "scanned": len(codes)}
+    _today_chips_cache["date"] = today
+    _today_chips_cache["data"] = result
+    return {**result, "cached": False}
 
 
 @app.post("/api/watchlist/refresh")
@@ -2169,6 +2256,7 @@ def watchlist_refresh_all():
     """Refresh every code in the watchlist sequentially. Reuses shared
     caches (TAIEX, T86, companies) across stocks, so the per-stock cost
     is dominated by one TWSE STOCK_DAY call each (incremental path)."""
+    _invalidate_today_chips_cache()
     codes = _load_watchlist()
     updated = []
     failed = []
@@ -2222,6 +2310,7 @@ def taiex_today_put(payload: dict = Body(...)):
         raise HTTPException(400, "close must be a number")
     if close <= 0 or close > 100000:
         raise HTTPException(400, "close out of range")
+    _invalidate_today_chips_cache()
     today_iso = _today_iso()
     with _taiex_manual_lock:
         manual = _load_taiex_manual()
@@ -2278,6 +2367,7 @@ def taiex_today_delete():
         if today_iso in manual:
             del manual[today_iso]
             _save_taiex_manual(manual)
+    _invalidate_today_chips_cache()
     return {"ok": True, "date": today_iso}
 
 
