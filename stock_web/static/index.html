@@ -2384,12 +2384,16 @@ function renderHero(dashboard, lastRow, code, info) {
 // Priority order when multiple chips fire simultaneously. Reflects
 // per-stock breadth (same-sign rate across the 30-stock universe):
 //   inst_not_confirmed       72% breadth (the AVOID rule)
-//   reversal_inst_confirm_5  62% breadth
+//   reversal_inst_confirm_3  66% breadth, smaller +1% magnitude
+//   reversal_inst_confirm_5  62% breadth, +3% magnitude
 //   inst_lead                58% breadth
 //   reversal_inst_confirm_4  48% breadth (essentially coin flip per code)
+// 5★ ranks above 3★ because +3% beats +1% even though breadth is
+// slightly lower; 4★ falls last because per-code is coin flip.
 const CHIP_PRIORITY = [
   "inst_not_confirmed",
   "reversal_inst_confirm_5",
+  "reversal_inst_confirm_3",
   "inst_lead",
   "reversal_inst_confirm_4",
 ];

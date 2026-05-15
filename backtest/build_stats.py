@@ -66,6 +66,7 @@ INST_BUCKETS = ("green", "non_green")
 CHIP_KINDS = (
     "inst_not_confirmed",
     "inst_lead",
+    "reversal_inst_confirm_3",
     "reversal_inst_confirm_4",
     "reversal_inst_confirm_5",
 )
@@ -102,7 +103,7 @@ def _chip_events_for_code(rows: list[dict], code: str, market: str
             out["inst_lead"].append(evt["idx"])
 
     # Reversal-quality + 法人=綠
-    for score in (4, 5):
+    for score in (3, 4, 5):
         for idx in find_exact_events(rows, target=score):
             _, steps = _compute_lights(rows, idx, code=code, market=market)
             if not steps or len(steps) <= INST_IDX:

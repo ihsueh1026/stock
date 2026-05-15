@@ -1173,17 +1173,19 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
     # backtest/reversal_quality_study.py on 30 stocks:
     #   - score==5 + 法人=綠  → 40d alpha +3.4%, win 64%, 16/26 codes
     #     positive (62% same-sign). n=117 events.
-    #   - score==4 + 法人=綠  → 40d alpha +2.4%, win 56%, 14/29 codes
-    #     positive (48% — coin-flip per code). n=234 events.
-    # The pooled magnitude on 4★+綠 is sizeable but per-code breadth
-    # makes it less reliable for individual stocks — chip labels both
-    # but the user can read the star count as confidence.
+    #   - score==4 + 法人=綠  → 40d alpha +3.5%, win 57%, 14/29 codes
+    #     positive (48% — coin flip per code). n=246 events.
+    #   - score==3 + 法人=綠  → 40d alpha +1.1%, win 53%, 19/29 codes
+    #     positive (66% — best breadth of the three). n=369 events.
+    # All three tiers fire the chip with star count rendered in text,
+    # so the user reads star count as confidence: 5★ best magnitude,
+    # 3★ best per-stock breadth, 4★ in the middle but coin-flip breadth.
     if (steps and reversal_quality
             and reversal_quality.get("score") is not None
             and len(steps) > INST_IDX):
         score = reversal_quality["score"]
         inst_light = steps[INST_IDX]["light"]
-        if inst_light == "green" and score >= 4:
+        if inst_light == "green" and score >= 3:
             stars = "★" * score
             alerts.append({
                 "kind": "reversal_inst_confirm",
