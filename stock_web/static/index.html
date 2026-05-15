@@ -1549,6 +1549,7 @@ const CHIP_DISPLAY = {
   topping_inst_red_5:        { label: "高點 ★★★★★+法人未確認", tone: "warn" },
   reversal_inst_confirm_4:   { label: "反轉 ★★★★+法人到位", tone: "info" },
   reversal_inst_confirm_5:   { label: "反轉 ★★★★★+法人到位", tone: "info" },
+  topping_inst_yellow_5:     { label: "強勢延伸 ★★★★★+法人觀望", tone: "info" },
   bearish_divergence:        { label: "頂背離 (短期警示)", tone: "warn" },
 };
 const CHIP_DISPLAY_ORDER = [
@@ -1556,6 +1557,7 @@ const CHIP_DISPLAY_ORDER = [
   "topping_inst_red_5",
   "reversal_inst_confirm_5",
   "reversal_inst_confirm_4",
+  "topping_inst_yellow_5",
   "bearish_divergence",
 ];
 
@@ -2564,6 +2566,12 @@ const CHIP_PRIORITY = [
   "topping_inst_red_5",
   "reversal_inst_confirm_4",
   "reversal_inst_confirm_5",
+  // topping_inst_yellow_5 is a bullish continuation chip (5★ + 法人
+  // 觀望 → +1.96% / 58% @ 20d, n=263, per-stock 1.8:1 positive).
+  // Placed after reversal chips because its per-stock asymmetry is
+  // weaker (1.8:1 vs reversal's validated 40d edge), but ahead of
+  // bearish_divergence since the pool signal is meaningful.
+  "topping_inst_yellow_5",
   // bearish_divergence is at the tail — its pool-level alpha is near
   // zero, so it should only surface in the backtest card when none of
   // the validated chips above are firing. Per-stock readings (when
@@ -2624,7 +2632,7 @@ function renderBacktestPlaceholder() {
   subtitle.textContent = "(目前無已驗證 chip 觸發)";
   grid.innerHTML = "";
   foot.textContent =
-    "已驗證 chip:⚠ 法人未確認 / ⚠ 高點 5★+紅 / ✨ 反轉 4★/5★+法人到位 / ⚠ 頂背離 (per-stock)";
+    "已驗證 chip:⚠ 法人未確認 / ⚠ 高點 5★+紅 / ✨ 反轉 4★/5★+法人到位 / 📈 強勢延伸 5★+黃 / ⚠ 頂背離 (per-stock)";
   card.hidden = false;
 }
 
@@ -2712,9 +2720,12 @@ function renderBacktestStats(alert, d, code, regime) {
   grid.innerHTML = [...header, ...body].join("");
   // bearish_divergence + topping_inst_red_5 are short-horizon signals
   // — bull-market drift washes them out past 20d, so 5-10d is the
-  // meaningful read. The other chips have validated edges at 40d.
+  // meaningful read. topping_inst_yellow_5 is the opposite: signal
+  // builds over time, headline is 20d. The other chips have validated
+  // edges at 40d.
   const isBearishDiv = alert.stat_key === "bearish_divergence";
   const isToppingRed5 = alert.stat_key === "topping_inst_red_5";
+  const isToppingYellow5 = alert.stat_key === "topping_inst_yellow_5";
   if (isBearishDiv) {
     foot.textContent = usePerStock
       ? "頂背離訊號壽命 ≈ 10 日(過後被多頭吃回) · 該檔自身命中 · 觀察用"
@@ -2723,6 +2734,10 @@ function renderBacktestStats(alert, d, code, regime) {
     foot.textContent = usePerStock
       ? "高點 5★+法人=red 訊號壽命 ≈ 5 日(過後被多頭吃回) · 該檔自身命中 · 觀察用"
       : "高點 5★+法人=red @ 5d 池 -1.0% / 39% win(n=120) · 過 20d 失效 · 短期警示";
+  } else if (isToppingYellow5) {
+    foot.textContent = usePerStock
+      ? "強勢延伸:5★+法人觀望 = 過熱但機構未跟拋 → 通常續攻(20日最強) · 該檔自身命中"
+      : "5★+法人=yellow @ 20d 池 +2.0% / 58% win(n=263) · 機構觀望時技術過熱常續攻";
   } else if (usePerStock) {
     foot.textContent =
       "alpha 為該檔自身歷史命中 · vs 全池 = 該檔 − 30 檔池中位 · 觀察用";

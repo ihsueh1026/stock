@@ -1263,30 +1263,43 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                 "combo_amp": "volume_burst" if amp else None,
             })
 
-    # --- Topping-quality + 法人=red (short-horizon bearish) ---
+    # --- Topping-quality conditional chips ---
     # backtest/topping_quality_study.py on the 50-stock universe:
-    #   - score==5 + 法人=red → 5d alpha -1.01% / 39% (n=120),
-    #     10d -0.66% / 45%. By 20d the signal is gone (+drift takes
-    #     over), by 40d it inverts. Per-stock: 9 negative : 7 flat :
-    #     3 positive — 3:1 asymmetry, cleanest topping cell measured.
-    #   - score==4 + 法人=red is essentially flat (-0.12% to +0.14%
-    #     across horizons) — two-tail offsetting per-stock, not
-    #     a directional signal. Skipped.
-    #   - score==3 + 法人=red has pool edge but dilutes to 1.5:1 by
-    #     20d (22 neg vs 15 pos per-stock). Skipped.
+    #
+    # 5★ + 法人=red → 5d alpha -1.01% / 39% (n=120), per-stock 3:1
+    #   negative. Short-horizon bearish, signal dies past 20d (bull
+    #   drift takes over, alpha flips +1.15% at 40d).
+    # 5★ + 法人=yellow → 20d alpha +1.96% / 58% (n=263), per-stock
+    #   1.8:1 positive (14 neg : 4 flat : 25 pos). COUNTER-INTUITIVE
+    #   bullish — overbought + institutions holding fire is a
+    #   continuation configuration, not a topping configuration. UI
+    #   framed as "強勢延伸" to avoid the "高點" label suggesting the
+    #   wrong direction.
+    # 4★ + 法人=red → essentially flat (-0.12% to +0.14% across
+    #   horizons), two-tail offsetting per-stock. Skipped.
+    # 3★ + 法人=red → pool edge dilutes to 1.5:1 by 20d. Skipped.
+    #
     # Mirror of reversal_inst_confirm: same exact-score gating logic.
     if (steps and topping_quality
             and topping_quality.get("score") is not None
             and len(steps) > INST_IDX):
         t_score = topping_quality["score"]
         inst_light = steps[INST_IDX]["light"]
-        if inst_light == "red" and t_score == 5:
+        if t_score == 5 and inst_light == "red":
             alerts.append({
                 "kind": "topping_inst_red",
                 "icon": "⚠",
                 "tone": "danger",
                 "text": "高點 ★★★★★+法人未確認 (5日內短期警示)",
                 "stat_key": "topping_inst_red_5",
+            })
+        elif t_score == 5 and inst_light == "yellow":
+            alerts.append({
+                "kind": "topping_inst_yellow",
+                "icon": "📈",
+                "tone": "info",
+                "text": "強勢延伸 ★★★★★+法人觀望 (20日續攻訊號)",
+                "stat_key": "topping_inst_yellow_5",
             })
 
     # --- Divergence (re-using already-computed result from step 3) ---

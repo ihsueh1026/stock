@@ -88,6 +88,13 @@ CHIP_KINDS = (
     # since signal dies by 20d (bull drift). Mirror of
     # reversal_inst_confirm_5 (which uses 法人=green).
     "topping_inst_red_5",
+    # 5★ topping + 法人=yellow: counter-intuitively BULLISH at 20d
+    # (+1.96% / 58% win, n=263). Per-stock 1.8:1 positive (14:4:25)
+    # — overbought + institutions holding fire = momentum-extension
+    # configuration. Framed in UI as "強勢延伸" not "topping" so the
+    # bearish-sounding label doesn't conflict with the bullish data.
+    # Headline 20d (signal builds with time, opposite of topping_red).
+    "topping_inst_yellow_5",
 )
 
 REGIME_BUCKETS = ("bull", "bear")
@@ -167,8 +174,8 @@ def _chip_events_for_code(rows: list[dict], code: str, market: str
             out["bearish_divergence"].append(i)
         last_kind = kind
 
-    # 高點 5★ + 法人=red — exact-score crossing (first bar where
-    # topping_quality.score == 5), reset when score moves away.
+    # 高點 5★ + 法人={red|yellow} — exact-score crossing. Both buckets
+    # filled in one pass (split on inst light at event time).
     # Mirrors `backtest/topping_quality_study.find_exact_topping_events`.
     last_score: int | None = None
     for i in range(60, len(rows)):
@@ -181,8 +188,11 @@ def _chip_events_for_code(rows: list[dict], code: str, market: str
         if s == 5 and last_score != 5:
             _, steps = _compute_lights(rows, i, code=code, market=market)
             if steps and len(steps) > INST_IDX:
-                if steps[INST_IDX]["light"] == "red":
+                light = steps[INST_IDX]["light"]
+                if light == "red":
                     out["topping_inst_red_5"].append(i)
+                elif light == "yellow":
+                    out["topping_inst_yellow_5"].append(i)
         last_score = s
 
     return out
