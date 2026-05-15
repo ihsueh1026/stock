@@ -281,10 +281,10 @@
   .taiex-bar button.ghost-x:hover { color: var(--red); background: transparent; }
 
   .today-chips {
-    grid-column: 1 / -1;
     padding: 10px 12px; border-radius: 8px;
     background: var(--card); border: 1px solid var(--border);
     font-size: 12.5px;
+    margin-bottom: 14px;
   }
   .today-chips .tc-head {
     display: flex; align-items: center; gap: 8px;
@@ -1067,6 +1067,9 @@
 
     /* Watchlist grid: force 1 col with tighter gap */
     .grid { grid-template-columns: 1fr; gap: 10px; }
+
+    /* Today-chips panel: tighten spacing on mobile to match grid gap */
+    .today-chips { margin-bottom: 10px; padding: 8px 10px; }
 
     /* Watch cards: tighter padding, smaller min-height, bigger price */
     .watch-card { padding: 14px 14px 12px; min-height: 0; }
