@@ -1008,19 +1008,22 @@ def _step_8_institutional(window, code, market=MARKET_TWSE, cached_only=False):
 
 def _compute_alerts(window, code=None, market=MARKET_TWSE,
                     divergence=None, cached_only=False,
-                    steps=None, history=None):
+                    steps=None, history=None,
+                    reversal_quality=None):
     """Return a list of alert chips for the current view.
 
     Alerts are observations layered on top of the 7-step lights — they
     don't gate any signal, they just surface stuff a trader would
-    glance at: 爆量 / 量縮 / 法人連 N 日同向 / 背離 / 法人未確認.
+    glance at: 爆量 / 量縮 / 法人連 N 日同向 / 背離 / 法人未確認 /
+    反轉品質+法人綠.
 
     Each entry is {kind, icon, text, tone} where tone ∈ {info,warn,danger}.
     `cached_only` skips T86 network fetches (passed True from the history
     strip if we ever extend alerts there; current call sites use False).
     `steps` is today's 7 lights; `history` is the last ~15 days of lights
     used to detect red-regime-exit / green-regime-entry context for the
-    institutional-confirmation chips.
+    institutional-confirmation chips. `reversal_quality` is today's score
+    used for the 4★/5★ + 法人綠 chip.
     """
     alerts: list[dict] = []
 
@@ -1162,6 +1165,29 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                         "tone": "info",
                         "text": "法人提前+量能未發",
                     })
+
+    # --- Reversal-quality + 法人綠 confirmation ---
+    # backtest/reversal_quality_study.py on 30 stocks:
+    #   - score==5 + 法人=綠  → 40d alpha +3.4%, win 64%, 16/26 codes
+    #     positive (62% same-sign). n=117 events.
+    #   - score==4 + 法人=綠  → 40d alpha +2.4%, win 56%, 14/29 codes
+    #     positive (48% — coin-flip per code). n=234 events.
+    # The pooled magnitude on 4★+綠 is sizeable but per-code breadth
+    # makes it less reliable for individual stocks — chip labels both
+    # but the user can read the star count as confidence.
+    if (steps and reversal_quality
+            and reversal_quality.get("score") is not None
+            and len(steps) > INST_IDX):
+        score = reversal_quality["score"]
+        inst_light = steps[INST_IDX]["light"]
+        if inst_light == "green" and score >= 4:
+            stars = "★" * score
+            alerts.append({
+                "kind": "reversal_inst_confirm",
+                "icon": "✨",
+                "tone": "info",
+                "text": f"反轉 {stars}+法人到位",
+            })
 
     # --- Divergence (re-using already-computed result from step 3) ---
     if divergence and divergence.get("kind") == "bearish":
@@ -1488,7 +1514,8 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
     history = _history_lights(full_rows, code, market=market)
     alerts = _compute_alerts(window, code=code, market=market,
                              divergence=divergence, cached_only=False,
-                             steps=steps, history=history)
+                             steps=steps, history=history,
+                             reversal_quality=reversal)
 
     return {
         "as_of": last["date"],
