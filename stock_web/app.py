@@ -1091,6 +1091,10 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
     alerts: list[dict] = []
 
     # --- Volume burst / dry-up vs last 20 bars (excluding today) ---
+    # volume_burst_active is also captured so the AVOID + reversal chips
+    # below can amplify their tone/text when 爆量 co-fires — backtest/
+    # cross_chip_results.md showed +/- 4-5pp deltas vs the chip alone.
+    volume_burst_active = False
     vols = [r.get("lots") for r in window[:-1] if r.get("lots") is not None]
     today_vol = window[-1].get("lots") if window else None
     if today_vol and len(vols) >= 5:
@@ -1103,6 +1107,7 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
             else:
                 sd = 0
             if today_vol > avg + 2 * sd and ratio >= 1.5:
+                volume_burst_active = True
                 alerts.append({
                     "kind": "volume_burst",
                     "icon": "🔥",
@@ -1204,25 +1209,27 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                 and all(c < GREEN_THRESH for c in hist_green[-QUIET_DAYS - 1:-1])
             )
 
-            if red_exit and today_inst == "red":
-                alerts.append({
+            # AVOID + 爆量 combo: cross-chip study shows 40d alpha
+            # deepens to -6.4% / 42% (n=38) vs -1.84% for AVOID alone.
+            # Upgrade tone to danger and tag the chip when both fire.
+            def _avoid_chip(detail: str) -> dict:
+                amp = volume_burst_active
+                return {
                     "kind": "inst_not_confirmed",
                     "icon": "⚠",
-                    "tone": "warn",
-                    "text": "法人未確認 (紅燈深陷期退出, 法人仍紅)",
+                    "tone": "danger" if amp else "warn",
+                    "text": (f"法人未確認+爆量 ({detail})"
+                             if amp else f"法人未確認 ({detail})"),
                     "stat_key": "inst_not_confirmed",
-                })
+                    "combo_amp": "volume_burst" if amp else None,
+                }
+            if red_exit and today_inst == "red":
+                alerts.append(_avoid_chip("紅燈深陷期退出, 法人仍紅"))
             elif green_entry:
                 inst_green = today_inst == "green"
                 vol_green = today_vol == "green"
                 if not inst_green and not vol_green:
-                    alerts.append({
-                        "kind": "inst_not_confirmed",
-                        "icon": "⚠",
-                        "tone": "warn",
-                        "text": "法人未確認 (綠燈進場, 法人量能皆非綠)",
-                        "stat_key": "inst_not_confirmed",
-                    })
+                    alerts.append(_avoid_chip("綠燈進場, 法人量能皆非綠"))
                 # LEAD (inst_green && !vol_green) intentionally not emitted:
                 # 50-stock universe shows no pooled edge (+0.06% / 50%).
 
@@ -1241,12 +1248,18 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
         inst_light = steps[INST_IDX]["light"]
         if inst_light == "green" and score >= 4:
             stars = "★" * score
+            # 反轉+法人到位 + 爆量 combo: cross-chip study shows
+            # 4★+爆量 → +4.8% / 69% (n=29) vs +1.3% alone; 5★+爆量 →
+            # +1.8% / 60% (n=30) vs +0.8%. Tag and prefix the chip.
+            amp = volume_burst_active
             alerts.append({
                 "kind": "reversal_inst_confirm",
-                "icon": "✨",
+                "icon": "🔥" if amp else "✨",
                 "tone": "info",
-                "text": f"反轉 {stars}+法人到位",
+                "text": (f"反轉 {stars}+法人到位+爆量"
+                         if amp else f"反轉 {stars}+法人到位"),
                 "stat_key": f"reversal_inst_confirm_{score}",
+                "combo_amp": "volume_burst" if amp else None,
             })
 
     # --- Divergence (re-using already-computed result from step 3) ---
@@ -1840,9 +1853,11 @@ app = FastAPI(title="TWSE Stock Viewer")
 
 @app.on_event("startup")
 def _on_startup() -> None:
-    """Run two cheap chores in the background so server boot stays snappy:
+    """Run cheap chores in the background so server boot stays snappy:
     (1) purge stale dated caches, (2) warm the company-info cache so the
-    first watchlist load doesn't pay the ~1MB OpenAPI fetch."""
+    first watchlist load doesn't pay the ~1MB OpenAPI fetch, (3) pre-warm
+    the today_chips scan (15-45s for a 28-stock watchlist) so the first
+    page open finds it instantly cached."""
     def _warm():
         try:
             _purge_old_caches()
@@ -1850,6 +1865,10 @@ def _on_startup() -> None:
             pass
         try:
             _refresh_company_cache()
+        except Exception:
+            pass
+        try:
+            watchlist_chips()
         except Exception:
             pass
     threading.Thread(target=_warm, daemon=True).start()
@@ -2206,8 +2225,11 @@ def _scan_chip_alerts_for_code(code: str) -> list[dict] | None:
 # (history + alerts) for every watchlist code takes 15-45s the first
 # time after a restart; the result is stable within a trading day so
 # we cache it. Invalidates when the trading-day tag changes or when
-# the watchlist is mutated (add/remove/refresh).
+# the watchlist is mutated (add/remove/refresh). The lock prevents two
+# parallel callers from each kicking off a full scan when the cache is
+# cold — second caller waits for the first to finish.
 _today_chips_cache: dict = {"date": None, "data": None}
+_today_chips_lock = threading.Lock()
 
 
 def _invalidate_today_chips_cache() -> None:
@@ -2229,26 +2251,31 @@ def watchlist_chips():
     cached = _today_chips_cache.get("data")
     if _today_chips_cache.get("date") == today and cached is not None:
         return {**cached, "cached": True}
-
-    from concurrent.futures import ThreadPoolExecutor
-    codes = _load_watchlist()
-    fires: dict[str, list[dict]] = {}
-    if not codes:
-        result = {"chips": fires, "total": 0, "scanned": 0}
+    with _today_chips_lock:
+        # Re-check inside lock — the prior caller may have just populated
+        # the cache while we were waiting.
+        cached = _today_chips_cache.get("data")
+        if _today_chips_cache.get("date") == today and cached is not None:
+            return {**cached, "cached": True}
+        from concurrent.futures import ThreadPoolExecutor
+        codes = _load_watchlist()
+        fires: dict[str, list[dict]] = {}
+        if not codes:
+            result = {"chips": fires, "total": 0, "scanned": 0}
+            _today_chips_cache["date"] = today
+            _today_chips_cache["data"] = result
+            return {**result, "cached": False}
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for results in ex.map(_scan_chip_alerts_for_code, codes):
+                if not results:
+                    continue
+                for r in results:
+                    fires.setdefault(r["stat_key"], []).append(r)
+        total = sum(len(v) for v in fires.values())
+        result = {"chips": fires, "total": total, "scanned": len(codes)}
         _today_chips_cache["date"] = today
         _today_chips_cache["data"] = result
         return {**result, "cached": False}
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        for results in ex.map(_scan_chip_alerts_for_code, codes):
-            if not results:
-                continue
-            for r in results:
-                fires.setdefault(r["stat_key"], []).append(r)
-    total = sum(len(v) for v in fires.values())
-    result = {"chips": fires, "total": total, "scanned": len(codes)}
-    _today_chips_cache["date"] = today
-    _today_chips_cache["data"] = result
-    return {**result, "cached": False}
 
 
 @app.post("/api/watchlist/refresh")
