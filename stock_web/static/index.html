@@ -1187,6 +1187,27 @@
           <div class="bt-foot" id="btFoot"></div>
         </div>
         <details class="overall-rules">
+          <summary>歷史狀態規則</summary>
+          <p class="rules-note" style="margin-top: 8px;">
+            樣本來自 30 檔台股科技 2021-04 ~ 2026-05 共 5 年。任一 chip 觸發時,
+            上方 card 顯示該 chip 歷史命中分布。中位 alpha = 該檔報酬 − 同期間 TAIEX。
+          </p>
+          <ol>
+            <li><b>⚠ 法人未確認</b> (AVOID):紅燈深陷期退出但法人仍紅,或綠燈進場但法人量能皆非綠。歷史 40d alpha -2.1% / 勝率 42%,跌市更兇 (-8.5%)。</li>
+            <li><b>✓ 法人提前+量能未發</b> (LEAD):綠燈進場 + 法人綠 + 量能非綠。歷史 40d alpha +1.2% / 勝率 54%,跌市裡偏弱。</li>
+            <li><b>✨ 反轉 ★★★+法人到位</b>:反轉品質分數 3 + 法人綠。歷史 40d alpha +1.1% / 勝率 53%,同向 66% (最廣)。</li>
+            <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質分數 4 + 法人綠。歷史 40d alpha +3.5% / 勝率 57%,同向 48%。</li>
+            <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質分數 5 + 法人綠。歷史 40d alpha +3.4% / 勝率 64%,跌市裡 win 升至 68%。</li>
+          </ol>
+          <p class="rules-note">
+            顯示優先順序:<br>
+            1. <b>該檔自身歷史</b> (≥3 次) — 在 30 檔回測池內的股票<br>
+            2. <b>今日 TAIEX regime 條件池</b> (≥15 次) — 池外股票<br>
+            3. <b>全池中位</b> — 兜底<br>
+            「同向」= 30 檔個股 40d alpha 中位與池子方向一致的比例,>60% 代表訊號穩定。
+          </p>
+        </details>
+        <details class="overall-rules">
           <summary>判定規則</summary>
           <p class="rules-note" style="margin-top: 8px;">
             <b>本儀表板為市況狀態描述,不是進出場機械訊號</b>。
