@@ -54,7 +54,7 @@ from backtest.red_recovery import find_recovery_events  # noqa: E402
 from backtest.green_entry import find_entry_events  # noqa: E402
 from backtest.reversal_quality_study import find_exact_events  # noqa: E402
 from stock_web.app import (  # noqa: E402
-    _compute_rows, _market_for, MARKET_TWSE,
+    _compute_rows, _market_for, _divergence, MARKET_TWSE,
     TAIEX_BEAR_THRESH, TAIEX_LOOKBACK,
 )
 from datetime import datetime  # noqa: E402
@@ -73,6 +73,14 @@ CHIP_KINDS = (
     "reversal_inst_confirm_3",
     "reversal_inst_confirm_4",
     "reversal_inst_confirm_5",
+    # 頂背離: pool-level alpha is ~0 (multi-horizon analysis in
+    # `backtest/bearish_div_study.py` showed 977 events, plain
+    # +0.12% / 50% at 40d, with strong per-stock heterogeneity
+    # (range -16% to +13%). Shipped as a chip because the per-stock
+    # view in the dashboard is informative even when the pool isn't.
+    # Headline horizon is 10d (法人=red shows -1.22% / 44%, n=77)
+    # since the signal is washed out by bull drift past 20d.
+    "bearish_divergence",
 )
 
 REGIME_BUCKETS = ("bull", "bear")
@@ -137,6 +145,20 @@ def _chip_events_for_code(rows: list[dict], code: str, market: str
                 continue
             if steps[INST_IDX]["light"] == "green":
                 out[f"reversal_inst_confirm_{score}"].append(idx)
+
+    # 頂背離 (bearish divergence) — first-bar crossings only, reset
+    # when divergence drops back to None/bullish. Mirrors the event
+    # logic in `backtest/bearish_div_study.find_bearish_div_events`.
+    last_kind: str | None = None
+    for i in range(60, len(rows)):
+        window = rows[max(0, i - 19): i + 1]
+        if len(window) < 15:
+            last_kind = None
+            continue
+        kind = (_divergence(window) or {}).get("kind")
+        if kind == "bearish" and last_kind != "bearish":
+            out["bearish_divergence"].append(i)
+        last_kind = kind
 
     return out
 

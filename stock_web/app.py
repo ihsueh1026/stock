@@ -1264,10 +1264,17 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
 
     # --- Divergence (re-using already-computed result from step 3) ---
     if divergence and divergence.get("kind") == "bearish":
+        # stat_key lets the backtest-stats card pull per-stock history
+        # for this chip. Pool-level alpha is ~0, but per-stock readings
+        # split cleanly into "true topper" vs "trend-continue" stocks
+        # (range -16% to +13% at 40d in `backtest/bearish_div_study.py`).
+        # Headline horizon is 10d — bull-market drift washes the signal
+        # out by 20d.
         alerts.append({
             "kind": "bearish_divergence", "icon": "⚠",
             "tone": "danger",
             "text": divergence.get("detail") or "頂背離",
+            "stat_key": "bearish_divergence",
         })
     elif divergence and divergence.get("kind") == "bullish":
         alerts.append({
