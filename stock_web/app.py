@@ -1662,7 +1662,23 @@ def _topping_quality(window: list[dict]) -> dict | None:
     checks.append({"name": "量比 出貨/背離", "passed": c5_pass, "detail": c5_detail})
 
     score = sum(1 for c in checks if c["passed"])
-    return {"score": score, "max": 5, "checks": checks}
+    STARS = ["—", "★", "★★", "★★★", "★★★★", "★★★★★"]
+    DESCS = [
+        "未呈高點特徵",
+        "條件不足",
+        "部分條件成立",
+        "中等高點條件",
+        "良好高點條件",
+        "高品質高點/續攻位置",
+    ]
+    return {
+        "score": score,
+        "max": 5,
+        "stars": STARS[score],
+        "desc": DESCS[score],
+        "checks": checks,
+        "note": "觀察用,5★+法人狀態才有 chip 訊號",
+    }
 
 
 def compute_dashboard(full_rows: list[dict], code: str | None = None,
@@ -1702,6 +1718,7 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
             "steps": steps,
             "summary": summary,
             "reversal_quality": reversal,
+            "topping_quality": topping,
             "price_zones": None,
             "distance": [],
             "history": [],
@@ -1726,6 +1743,7 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
         "steps": steps,
         "summary": summary,
         "reversal_quality": reversal,
+        "topping_quality": topping,
         "price_zones": zones,
         "distance": distance,
         "history": history,

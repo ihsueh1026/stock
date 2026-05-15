@@ -516,6 +516,20 @@
     font-weight: 600;
     flex-shrink: 0;
   }
+  /* Topping-quality badge mirrors wc-rq with warm-amber tint so the
+     two can be visually distinguished. In practice they rarely co-fire
+     (reversal needs near-20d-low, topping needs near-20d-high). */
+  .wc-tq {
+    display: inline-flex; align-items: center;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(242, 155, 80, 0.12);
+    border: 1px solid rgba(242, 155, 80, 0.3);
+    color: #f29b50;
+    font-size: 11px; letter-spacing: 0.5px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
   .wc-score-text {
     font-size: 11px; color: var(--text-muted);
     font-variant-numeric: tabular-nums;
@@ -702,6 +716,39 @@
   }
   @media (max-width: 480px) {
     .hero-overall .reversal-quality .rq-checks { grid-template-columns: 1fr; }
+  }
+  /* topping-quality reuses the same .rq-* inner structure so it
+     inherits the layout. We re-declare just the layout container and
+     give the stars a distinct warm-amber colour so the user can
+     visually tell which panel is firing (反轉低點 vs 高點). */
+  .hero-overall .topping-quality {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12.5px; color: var(--text-muted);
+  }
+  .hero-overall .topping-quality .rq-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .hero-overall .topping-quality .rq-stars {
+    color: #f29b50; font-weight: 600; letter-spacing: 1px;
+    font-size: 14px;
+  }
+  .hero-overall .topping-quality .rq-desc { color: var(--text); }
+  .hero-overall .topping-quality .rq-note {
+    color: var(--text-faint); font-size: 11.5px; margin-left: auto;
+  }
+  .hero-overall .topping-quality .rq-checks {
+    list-style: none; padding: 8px 0 0; margin: 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px;
+    font-size: 12px;
+  }
+  .hero-overall .topping-quality .rq-checks li.pass { color: var(--green); }
+  .hero-overall .topping-quality .rq-checks li.fail { color: var(--text-faint); }
+  .hero-overall .topping-quality .rq-detail {
+    color: var(--text-faint); margin-left: 4px; font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 480px) {
+    .hero-overall .topping-quality .rq-checks { grid-template-columns: 1fr; }
   }
   .hero-overall .overall-rules {
     margin-top: 10px; font-size: 12.5px; color: var(--text-muted);
@@ -1226,6 +1273,14 @@
           </div>
           <ul class="rq-checks" id="rqChecks"></ul>
         </div>
+        <div class="topping-quality" id="toppingQuality" hidden>
+          <div class="rq-head">
+            <span class="rq-stars" id="tqStars"></span>
+            <span class="rq-desc" id="tqDesc"></span>
+            <span class="rq-note" id="tqNote"></span>
+          </div>
+          <ul class="rq-checks" id="tqChecks"></ul>
+        </div>
         <div class="backtest-card" id="backtestCard" hidden>
           <div class="bt-head">
             <span class="bt-title">歷史此狀態後的報酬 <span class="bt-meta" id="btSubtitle"></span></span>
@@ -1241,14 +1296,19 @@
           </p>
           <ol>
             <li><b>⚠ 法人未確認</b> (AVOID):紅燈深陷期退出但法人仍紅,或綠燈進場但法人量能皆非綠。歷史 40d alpha -1.9% / 勝率 44%,跌市加深至 -3.2%。</li>
+            <li><b>⚠ 高點 ★★★★★+法人未確認</b>:高點品質 5★ + 法人紅。短期 5d alpha -1.0% / 勝率 39%,訊號壽命約 5 日(過 20d 被多頭吃回)。Per-stock 3:1 負向 — 最乾淨的高點 chip。</li>
             <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質分數 4 + 法人綠。歷史 40d alpha +1.7% / 勝率 55%,跌市表現相近 (+1.5%) — 最穩定的反轉訊號。</li>
             <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質分數 5 + 法人綠。歷史 40d alpha +1.0% / 勝率 54%,跌市裡躍升至 +2.8% / 61%。</li>
+            <li><b>📈 強勢延伸 ★★★★★+法人觀望</b>:高點品質 5★ + 法人黃(機構未跟拋)。20d alpha +2.2% / 勝率 58%(n=270),反直覺多頭續攻訊號 — 過熱但機構觀望,通常續攻而非反轉。</li>
+            <li><b>⚠ 頂背離</b> (per-stock):價新高但 RSI6 跟不上。Pool 中性 (+0.1%/50%),但個股差異極大(-16% ~ +13% @ 40d)。chip 卡片優先顯示該檔自身命中。</li>
           </ol>
           <p class="rules-note">
             顯示優先順序:<br>
             1. <b>該檔自身歷史</b> (≥3 次) — 在 50 檔回測池內的股票<br>
             2. <b>今日 TAIEX regime 條件池</b> (≥15 次) — 池外股票<br>
             3. <b>全池中位</b> — 兜底<br>
+            <br>
+            <b>品質分數面板</b>:在 chip 觸發之前,反轉品質與高點品質的 5 條件檢核會在 ≥2★ 時自動顯示,讓你看到配置正在 build。chip 在 5★ + 法人到位/未確認 時才觸發。<br>
             原 LEAD (法人提前) 與 3★+綠 chip 已移除:50 檔池上邊際接近零。
           </p>
         </details>
@@ -1884,14 +1944,21 @@ function renderWatchCard(item) {
   // Reversal-quality badge: only shown when ≥2/5 (per backtest, lower
   // scores carry no signal). Compact "★N" form. Wrapped together with
   // step-lights so on narrow cards they wrap as a group.
+  // Topping-quality badge parallel — different colour (warm-amber)
+  // distinguishes "low-point reversal" vs "high-point/continuation".
   const rq = item.reversal_quality;
+  const tq = item.topping_quality;
   const rqBadge = rq && rq.score >= 2
     ? `<span class="wc-rq" title="反轉品質 ${rq.score}/${rq.max} · ${escapeHtml(rq.desc || "")}(觀察用)">★${rq.score}</span>`
+    : "";
+  const tqBadge = tq && tq.score >= 2
+    ? `<span class="wc-tq" title="高點/續攻品質 ${tq.score}/${tq.max} · ${escapeHtml(tq.desc || "")}(觀察用)">高★${tq.score}</span>`
     : "";
   const rightGrp =
     `<span class="wc-right-grp">` +
     `<span class="step-lights" title="${sm.passed}/${sm.total || 8} 通過${sm.danger ? ` · ${sm.danger} 危險` : ""}">${lights}</span>` +
     rqBadge +
+    tqBadge +
     `</span>`;
   return `
     <a class="watch-card ${sm.light}" href="#/stock/${code}" data-card-code="${code}" draggable="true">
@@ -2037,6 +2104,7 @@ async function loadStock(code) {
     renderOverallHistory(data.dashboard.history || []);
     renderAlerts(data.dashboard.alerts || []);
     renderReversalQuality(data.dashboard.reversal_quality);
+    renderToppingQuality(data.dashboard.topping_quality);
     if (data.dashboard.summary && data.dashboard.summary.label) {
       const steps = data.dashboard.steps || [];
       const instLight = (steps[6] && steps[6].light) || null;
@@ -2783,6 +2851,30 @@ function renderReversalQuality(rq) {
   document.getElementById("rqNote").textContent = rq.note || "";
   const ul = document.getElementById("rqChecks");
   ul.innerHTML = (rq.checks || []).map(c => {
+    const cls = c.passed ? "pass" : "fail";
+    const mark = c.passed ? "✓" : "✗";
+    return `<li class="${cls}">${mark} ${escapeHtml(c.name)}` +
+      `<span class="rq-detail">${escapeHtml(c.detail || "")}</span></li>`;
+  }).join("");
+}
+
+function renderToppingQuality(tq) {
+  // Mirror of renderReversalQuality. Same ≥2★ visibility threshold —
+  // sub-2 is meaningless noise; ≥2 is informative pre-warning territory
+  // (chip only fires at 5★ + 法人=red/yellow, so 2-4 stars give the
+  // user advance heads-up that the configuration is building).
+  const wrap = document.getElementById("toppingQuality");
+  if (!tq || tq.score < 2) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  document.getElementById("tqStars").textContent = tq.stars || "";
+  document.getElementById("tqDesc").textContent =
+    `高點/續攻品質 · ${tq.desc || ""} (${tq.score}/${tq.max})`;
+  document.getElementById("tqNote").textContent = tq.note || "";
+  const ul = document.getElementById("tqChecks");
+  ul.innerHTML = (tq.checks || []).map(c => {
     const cls = c.passed ? "pass" : "fail";
     const mark = c.passed ? "✓" : "✗";
     return `<li class="${cls}">${mark} ${escapeHtml(c.name)}` +
