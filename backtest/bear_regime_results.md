@@ -78,13 +78,44 @@ candidate UX changes:
 Both are small changes if we surface the regime once in the dashboard
 payload. Not yet implemented.
 
+## Threshold sensitivity
+
+The 10% drawdown threshold was an initial pick. Sweep across five
+thresholds (LEAD 40d alpha, bear sub-sample):
+
+| threshold | bear days share | LEAD bear n | LEAD bear 40d | LEAD verdict |
+|---|---|---|---|---|
+| 5.0% | 380 (31%) | 134 | +1.1% / 53% | ROBUST |
+| 7.5% | 242 (20%) | 85 | +0.9% / 52% | ROBUST |
+| **10.0%** | 147 (12%) | 70 | **-0.8% / 47%** | **FLIPS** ← current |
+| 12.5% | 83 (7%) | 34 | +0.2% / 50% | ROBUST |
+| 15.0% | 49 (4%) | 28 | +0.2% / 50% | ROBUST |
+
+**The "LEAD flips in bear" verdict only holds at 10%.** At 5% / 7.5% /
+12.5% / 15% LEAD's bear alpha stays positive (though weaker than bull's
++1.3-1.6%). The negative reading at 10% comes from the ~14 events that
+fall in the 7.5-10% drawdown band; those events appear to cluster in a
+specific time window with bad outcomes that flip the bucket median.
+
+AVOID and reversal+綠 verdicts are stable across all thresholds — they
+stay ROBUST regardless. AVOID's magnitude varies more (-1.9% to -8.5%
+40d) because bear sample drops from n=67 (5%) to n=3 (15%), but
+direction is consistent.
+
+**Implication for the production LEAD demotion**: it's built on a
+threshold-sensitive reading. The directional finding ("LEAD is weaker
+in bear at every threshold") is robust; the magnitude ("LEAD flips
+sign") is not. The chip currently muts (tone=warn) on bear regime —
+that may be over-confident given this fragility. Two ways to reconcile
+on next iteration: (a) keep but re-frame text from "(跌市裡反向)" to
+"(跌市裡偏弱)", or (b) move threshold to 7.5% which has the largest
+bear sample and consistent ROBUST verdict.
+
 ## Caveats
 
-- Bear sample sizes are small (AVOID bear n=19 most worrying). The
-  direction is consistent but 95% CI is wide.
-- 10% drawdown threshold is somewhat arbitrary. Sensitivity tests
-  with 7.5% / 12.5% / 15% would tell us how robust the bull/bear
-  partition is.
+- Bear sample sizes are small at the 10% default (AVOID bear n=19,
+  reversal_5 bear n=48 the largest). At 7.5% threshold AVOID gets
+  n=43 — still small.
 - All bear spans cluster in 2022 + 2024 H2 + 2025 H1. A different
   bear (different macro driver) might behave differently.
 - "Drawdown from 60d high" is a regime label, not a leading indicator
