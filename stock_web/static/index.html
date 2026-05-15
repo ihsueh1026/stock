@@ -253,6 +253,15 @@
     font-size: 11px; padding: 1px 6px; border-radius: 4px;
     background: rgba(255,255,255,0.06); border: 1px solid var(--border);
   }
+  .taiex-bar .tx-regime {
+    font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    background: rgba(0,200,120,0.10); color: var(--green);
+    border: 1px solid var(--green-soft, rgba(0,200,120,0.3));
+  }
+  .taiex-bar .tx-regime.bear {
+    background: rgba(255,100,80,0.12); color: var(--red);
+    border-color: var(--red-soft, rgba(255,100,80,0.35));
+  }
   .taiex-bar input {
     width: 90px; padding: 3px 6px; font-size: 12px;
     border: 1px solid var(--border); border-radius: 6px;
@@ -1484,13 +1493,22 @@ function renderTaiexBar(data) {
   bar.hidden = false;
   bar.classList.remove("missing", "manual");
   const fmt = v => v == null ? "—" : Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  // Regime tag — backtest/bear_regime_test.py showed LEAD inverts and
+  // AVOID strengthens in bear, so users want to see this context next
+  // to the index level.
+  const regimeTag = data.regime === "bear"
+    ? `<span class="tx-regime bear" title="TAIEX 自 60 日高點跌幅 ≥10%">跌市</span>`
+    : data.regime === "bull"
+      ? `<span class="tx-regime" title="TAIEX 自 60 日高點跌幅 <10%">多頭</span>`
+      : "";
   if (data.source === "auto") {
-    bar.innerHTML = `<span class="tx-label">今日大盤</span><span class="tx-value">${fmt(data.close)}</span>`;
+    bar.innerHTML = `<span class="tx-label">今日大盤</span><span class="tx-value">${fmt(data.close)}</span>${regimeTag}`;
   } else if (data.source === "manual") {
     bar.classList.add("manual");
     bar.innerHTML = `
       <span class="tx-label">今日大盤</span>
       <span class="tx-value">${fmt(data.close)}</span>
+      ${regimeTag}
       <span class="tx-tag">手動</span>
       <button type="button" class="ghost-x" id="taiexClearBtn" title="清除手動值">✕</button>
     `;

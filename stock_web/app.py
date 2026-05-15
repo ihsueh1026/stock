@@ -150,6 +150,68 @@ SUMMARY_LABELS = {
 }
 
 
+# TAIEX regime classification (mirrors backtest/bear_regime_test.py).
+# Trailing-60-day drawdown >= TAIEX_BEAR_THRESH means today is bear;
+# otherwise bull. Used to adjust chip emphasis live: LEAD's edge
+# inverts in bear regime (backtest n=70, 40d alpha -0.76% vs +1.58%
+# in bull), so we mute it; AVOID + reversal+綠 keep or strengthen.
+TAIEX_BEAR_THRESH = 0.10
+TAIEX_LOOKBACK = 60
+
+
+def _taiex_regime_from_rows(rows: list[dict]) -> str | None:
+    """Classify today's TAIEX regime from a stock's row series.
+
+    Uses the per-bar `taiex` field that _compute_rows attaches. Returns
+    None if too few TAIEX points are available (e.g. very new listings).
+    """
+    if not rows:
+        return None
+    tvals = [r.get("taiex") for r in rows[-TAIEX_LOOKBACK:]
+             if r.get("taiex") is not None]
+    if len(tvals) < 5:
+        return None
+    peak = max(tvals)
+    cur = tvals[-1]
+    if peak <= 0:
+        return None
+    dd = (cur - peak) / peak
+    return "bear" if dd <= -TAIEX_BEAR_THRESH else "bull"
+
+
+def _taiex_regime_today() -> str | None:
+    """Classify today's TAIEX regime from the TAIEX cache (no specific
+    stock series needed). Used by /api/taiex/today.
+    """
+    cache = _taiex_cache()
+    if not cache.exists():
+        return None
+    try:
+        with cache.open() as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or not data:
+        return None
+    # Overlay any manual override (matches /api/taiex/today behaviour).
+    manual = _load_taiex_manual()
+    if manual:
+        merged = dict(data)
+        merged.update(manual)
+        data = merged
+    sorted_pairs = sorted(data.items())
+    last_n = sorted_pairs[-TAIEX_LOOKBACK:]
+    vals = [v for _, v in last_n if v is not None]
+    if len(vals) < 5:
+        return None
+    peak = max(vals)
+    if peak <= 0:
+        return None
+    cur = vals[-1]
+    dd = (cur - peak) / peak
+    return "bear" if dd <= -TAIEX_BEAR_THRESH else "bull"
+
+
 T86_URL = "https://www.twse.com.tw/rwd/zh/fund/T86"
 T86_OTC_URL = "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
 T86_HTTP_HEADERS = {
@@ -1009,7 +1071,8 @@ def _step_8_institutional(window, code, market=MARKET_TWSE, cached_only=False):
 def _compute_alerts(window, code=None, market=MARKET_TWSE,
                     divergence=None, cached_only=False,
                     steps=None, history=None,
-                    reversal_quality=None):
+                    reversal_quality=None,
+                    taiex_regime=None):
     """Return a list of alert chips for the current view.
 
     Alerts are observations layered on top of the 7-step lights — they
@@ -1161,11 +1224,18 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                         "stat_key": "inst_not_confirmed",
                     })
                 elif inst_green and not vol_green:
+                    # Bear-regime test (backtest/bear_regime_results.md):
+                    # LEAD's bull +1.58% / 58% flips to bear -0.76% /
+                    # 47%. Demote tone and append a hint when today's
+                    # TAIEX is in bear regime so the user reads it as
+                    # weakened, not a confirming signal.
+                    is_bear = taiex_regime == "bear"
                     alerts.append({
                         "kind": "inst_lead",
                         "icon": "✓",
-                        "tone": "info",
-                        "text": "法人提前+量能未發",
+                        "tone": "warn" if is_bear else "info",
+                        "text": ("法人提前+量能未發 (跌市裡反向)"
+                                 if is_bear else "法人提前+量能未發"),
                         "stat_key": "inst_lead",
                     })
 
@@ -1518,10 +1588,12 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
     zones = _price_zones(summary, last, sigma, s6["light"])
     distance = _distance(last, sigma) + _stoploss_levels(last, sigma)
     history = _history_lights(full_rows, code, market=market)
+    taiex_regime = _taiex_regime_from_rows(full_rows)
     alerts = _compute_alerts(window, code=code, market=market,
                              divergence=divergence, cached_only=False,
                              steps=steps, history=history,
-                             reversal_quality=reversal)
+                             reversal_quality=reversal,
+                             taiex_regime=taiex_regime)
 
     return {
         "as_of": last["date"],
@@ -2134,9 +2206,11 @@ def watchlist_refresh_all():
 @app.get("/api/taiex/today")
 def taiex_today_get():
     today_iso = _today_iso()
+    regime = _taiex_regime_today()
     manual = _load_taiex_manual()
     if today_iso in manual:
-        return {"date": today_iso, "close": manual[today_iso], "source": "manual"}
+        return {"date": today_iso, "close": manual[today_iso],
+                "source": "manual", "regime": regime}
     cache = _taiex_cache()
     if cache.exists():
         try:
@@ -2144,10 +2218,12 @@ def taiex_today_get():
                 data = json.load(f)
             v = data.get(today_iso)
             if v is not None:
-                return {"date": today_iso, "close": v, "source": "auto"}
+                return {"date": today_iso, "close": v,
+                        "source": "auto", "regime": regime}
         except (OSError, json.JSONDecodeError):
             pass
-    return {"date": today_iso, "close": None, "source": None}
+    return {"date": today_iso, "close": None, "source": None,
+            "regime": regime}
 
 
 @app.put("/api/taiex/today")
