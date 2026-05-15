@@ -2456,37 +2456,42 @@ function renderBacktestStats(label, d, instLight) {
   const cls = (v) => (v == null || isNaN(v)) ? "" :
     (v > 0.002 ? "pos" : v < -0.002 ? "neg" : "");
 
-  // Last column is the "edge" against a baseline: vs 全體 when
-  // conditional (does today's 法人 state shift this label's median?),
-  // otherwise vs 隨機 (does this label beat any-day baseline?).
-  const lastHeader = useConditional ? "vs 全體" : "vs 隨機";
+  // Show alpha (stock − TAIEX) instead of raw return: raw return drifts
+  // up with horizon (taiwan tech is mostly bull in the 5y window) so
+  // the user sees "+2.5% 40日" and over-reads it. Alpha is centered
+  // at zero and tells you "did this label do better than just holding
+  // TAIEX". Last column is "vs 全體" (conditional shift, only meaningful
+  // when conditional view active) or "n" (per-horizon sample size).
+  const lastHeader = useConditional ? "vs 全體" : "n";
   const header = [
     `<span class="bt-th">期間</span>`,
-    `<span class="bt-th">報酬中位</span>`,
+    `<span class="bt-th">中位 alpha</span>`,
     `<span class="bt-th">勝率</span>`,
     `<span class="bt-th">${lastHeader}</span>`,
   ];
   const body = rows.flatMap(r => {
-    let delta = null;
+    const a = r.alpha_med;
+    const w = r.alpha_win;
+    let lastCell;
     if (useConditional) {
       const uc = (d.horizons || {})[r.h] || {};
-      if (r.ret_med != null && uc.ret_med != null) {
-        delta = r.ret_med - uc.ret_med;
-      }
-    } else if (r.ret_med != null && r.rand_med != null) {
-      delta = r.ret_med - r.rand_med;
+      const delta = (a != null && uc.alpha_med != null)
+        ? (a - uc.alpha_med) : null;
+      lastCell = `<span class="bt-val ${cls(delta)}">${fmtPct(delta)}</span>`;
+    } else {
+      lastCell = `<span class="bt-val">${r.n != null ? r.n : "—"}</span>`;
     }
     return [
       `<span>${r.h} 日</span>`,
-      `<span class="bt-val ${cls(r.ret_med)}">${fmtPct(r.ret_med)}</span>`,
-      `<span class="bt-val">${fmtWin(r.win_pct)}</span>`,
-      `<span class="bt-val ${cls(delta)}">${fmtPct(delta)}</span>`,
+      `<span class="bt-val ${cls(a)}">${fmtPct(a)}</span>`,
+      `<span class="bt-val">${fmtWin(w)}</span>`,
+      lastCell,
     ];
   });
   grid.innerHTML = [...header, ...body].join("");
   foot.textContent = useConditional
-    ? `今日法人狀態下的條件分布 · 觀察用,非進場依據`
-    : "觀察用,非進場依據 · 隨機基準 = 同期間樣本內任意日的前向報酬";
+    ? `alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 條件 = 今日法人狀態 · 觀察用`
+    : "alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 觀察用,非進場依據";
   card.hidden = false;
 }
 
