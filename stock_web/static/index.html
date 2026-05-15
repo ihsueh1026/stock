@@ -578,7 +578,7 @@
     font-size: 12px;
   }
   .hero-overall .backtest-card .bt-head {
-    display: flex; justify-content: space-between; align-items: baseline;
+    display: flex; flex-direction: column; gap: 2px;
     margin-bottom: 6px;
   }
   .hero-overall .backtest-card .bt-title {
@@ -2415,7 +2415,7 @@ function renderBacktestStats(label, d, instLight) {
   let bucket = null;
   if (instLight === "green") bucket = "green";
   else if (instLight === "yellow" || instLight === "red") bucket = "non_green";
-  const bucketLabel = bucket === "green" ? "法人=綠"
+  const bucketLabel = bucket === "green" ? "法人綠"
     : bucket === "non_green" ? "法人非綠" : null;
 
   let condHorizons = null;
