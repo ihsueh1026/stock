@@ -54,7 +54,8 @@ from backtest.red_recovery import find_recovery_events  # noqa: E402
 from backtest.green_entry import find_entry_events  # noqa: E402
 from backtest.reversal_quality_study import find_exact_events  # noqa: E402
 from stock_web.app import (  # noqa: E402
-    _compute_rows, _market_for, _divergence, MARKET_TWSE,
+    _compute_rows, _market_for, _divergence,
+    _topping_quality, MARKET_TWSE,
     TAIEX_BEAR_THRESH, TAIEX_LOOKBACK,
 )
 from datetime import datetime  # noqa: E402
@@ -81,6 +82,12 @@ CHIP_KINDS = (
     # Headline horizon is 10d (法人=red shows -1.22% / 44%, n=77)
     # since the signal is washed out by bull drift past 20d.
     "bearish_divergence",
+    # 高點 5★ + 法人=red: short-horizon bearish (5d alpha -1.01% /
+    # 39% win on 50-stock pool, n=120). Per-stock 3:1 negative
+    # asymmetry — cleanest topping cell measured. Headline 5d
+    # since signal dies by 20d (bull drift). Mirror of
+    # reversal_inst_confirm_5 (which uses 法人=green).
+    "topping_inst_red_5",
 )
 
 REGIME_BUCKETS = ("bull", "bear")
@@ -159,6 +166,24 @@ def _chip_events_for_code(rows: list[dict], code: str, market: str
         if kind == "bearish" and last_kind != "bearish":
             out["bearish_divergence"].append(i)
         last_kind = kind
+
+    # 高點 5★ + 法人=red — exact-score crossing (first bar where
+    # topping_quality.score == 5), reset when score moves away.
+    # Mirrors `backtest/topping_quality_study.find_exact_topping_events`.
+    last_score: int | None = None
+    for i in range(60, len(rows)):
+        window = rows[max(0, i - 19): i + 1]
+        if len(window) < 20:
+            last_score = None
+            continue
+        tq = _topping_quality(window)
+        s = tq["score"] if tq else None
+        if s == 5 and last_score != 5:
+            _, steps = _compute_lights(rows, i, code=code, market=market)
+            if steps and len(steps) > INST_IDX:
+                if steps[INST_IDX]["light"] == "red":
+                    out["topping_inst_red_5"].append(i)
+        last_score = s
 
     return out
 

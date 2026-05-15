@@ -1072,6 +1072,7 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                     divergence=None, cached_only=False,
                     steps=None, history=None,
                     reversal_quality=None,
+                    topping_quality=None,
                     taiex_regime=None):
     """Return a list of alert chips for the current view.
 
@@ -1260,6 +1261,32 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                          if amp else f"反轉 {stars}+法人到位"),
                 "stat_key": f"reversal_inst_confirm_{score}",
                 "combo_amp": "volume_burst" if amp else None,
+            })
+
+    # --- Topping-quality + 法人=red (short-horizon bearish) ---
+    # backtest/topping_quality_study.py on the 50-stock universe:
+    #   - score==5 + 法人=red → 5d alpha -1.01% / 39% (n=120),
+    #     10d -0.66% / 45%. By 20d the signal is gone (+drift takes
+    #     over), by 40d it inverts. Per-stock: 9 negative : 7 flat :
+    #     3 positive — 3:1 asymmetry, cleanest topping cell measured.
+    #   - score==4 + 法人=red is essentially flat (-0.12% to +0.14%
+    #     across horizons) — two-tail offsetting per-stock, not
+    #     a directional signal. Skipped.
+    #   - score==3 + 法人=red has pool edge but dilutes to 1.5:1 by
+    #     20d (22 neg vs 15 pos per-stock). Skipped.
+    # Mirror of reversal_inst_confirm: same exact-score gating logic.
+    if (steps and topping_quality
+            and topping_quality.get("score") is not None
+            and len(steps) > INST_IDX):
+        t_score = topping_quality["score"]
+        inst_light = steps[INST_IDX]["light"]
+        if inst_light == "red" and t_score == 5:
+            alerts.append({
+                "kind": "topping_inst_red",
+                "icon": "⚠",
+                "tone": "danger",
+                "text": "高點 ★★★★★+法人未確認 (5日內短期警示)",
+                "stat_key": "topping_inst_red_5",
             })
 
     # --- Divergence (re-using already-computed result from step 3) ---
@@ -1546,6 +1573,85 @@ def _reversal_quality(window: list[dict]) -> dict | None:
     }
 
 
+def _topping_quality(window: list[dict]) -> dict | None:
+    """Score how 'topping-shaped' the current bar is, 0..5.
+
+    180° mirror of `_reversal_quality()`: near 20d HIGH instead of low,
+    recent rally instead of drawdown, K/RSI6 overbought instead of
+    oversold, volume either burst (出貨) or dry (價漲量縮背離).
+
+    Backtest (`backtest/topping_quality_study.py` on 50-stock pool)
+    showed pool-level alpha is flat at 40d — but conditioned on
+    step 7 法人 = red, score == 5 produces a clean short-horizon
+    bearish signal: -1.01% / 39% win at 5d (n=120), with 3:1 per-stock
+    negative asymmetry. That's the basis for the topping_inst_red_5
+    chip emitted by `_compute_alerts`.
+
+    Like `_reversal_quality`, this is OBSERVATION AID — the
+    unconditional score has no edge. The chip is only fired with the
+    +法人=red filter applied.
+    """
+    if len(window) < 20:
+        return None
+    last = window[-1]
+    close = last.get("close")
+    if close is None:
+        return None
+    closes20 = [r["close"] for r in window[-20:] if r.get("close") is not None]
+    lows20 = [r["low"] for r in window[-20:] if r.get("low") is not None]
+    highs20 = [r["high"] for r in window[-20:] if r.get("high") is not None]
+    if len(closes20) < 20 or not lows20 or not highs20:
+        return None
+    peak_high_20 = max(highs20)
+    min_low_20 = min(lows20)
+    near_high_pct = (peak_high_20 - close) / peak_high_20 * 100  # ≥ 0
+    runup_pct = (close - min_low_20) / min_low_20 * 100  # ≥ 0
+
+    k = last.get("kd_k")
+    rsi6 = last.get("rsi6")
+    lots = last.get("lots")
+    lots5 = [r["lots"] for r in window[-6:-1] if r.get("lots") is not None]
+
+    checks = []
+    # 1. close 在 20 日高點附近 (≤2%)
+    checks.append({
+        "name": "近 20 日高點 (≤2%)",
+        "passed": near_high_pct <= 2.0,
+        "detail": f"距 20 日高 -{near_high_pct:.1f}%",
+    })
+    # 2. 前期漲幅 ≥5%
+    checks.append({
+        "name": "前期漲幅 ≥5%",
+        "passed": runup_pct >= 5.0,
+        "detail": f"自 20 日低 +{runup_pct:.1f}%",
+    })
+    # 3. K > 75 (KD 超買)
+    checks.append({
+        "name": "K 超買 (>75)",
+        "passed": k is not None and k > 75,
+        "detail": f"K={k:.1f}" if k is not None else "K 資料不足",
+    })
+    # 4. RSI6 > 65
+    checks.append({
+        "name": "RSI6 偏高 (>65)",
+        "passed": rsi6 is not None and rsi6 > 65,
+        "detail": f"RSI6={rsi6:.1f}" if rsi6 is not None else "RSI6 資料不足",
+    })
+    # 5. 量比 ≥ 1.0 (爆量出貨) OR ≤0.7 (價漲量縮背離)
+    if lots is not None and lots5:
+        avg = sum(lots5) / len(lots5)
+        ratio = (lots / avg) if avg > 0 else 0
+        c5_pass = (ratio >= 1.0) or (ratio < 0.7)
+        c5_detail = f"量比={ratio:.2f}x"
+    else:
+        c5_pass = False
+        c5_detail = "量資料不足"
+    checks.append({"name": "量比 出貨/背離", "passed": c5_pass, "detail": c5_detail})
+
+    score = sum(1 for c in checks if c["passed"])
+    return {"score": score, "max": 5, "checks": checks}
+
+
 def compute_dashboard(full_rows: list[dict], code: str | None = None,
                       market: str = MARKET_TWSE, *,
                       compact: bool = False) -> dict:
@@ -1574,6 +1680,7 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
                            t86_cached_only=False, divergence=divergence)
     summary = _summary(steps)
     reversal = _reversal_quality(window)
+    topping = _topping_quality(window)
 
     if compact:
         return {
@@ -1597,6 +1704,7 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
                              divergence=divergence, cached_only=False,
                              steps=steps, history=history,
                              reversal_quality=reversal,
+                             topping_quality=topping,
                              taiex_regime=taiex_regime)
 
     return {
