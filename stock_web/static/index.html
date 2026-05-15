@@ -1874,7 +1874,8 @@ async function loadStock(code) {
     if (data.dashboard.summary && data.dashboard.summary.label) {
       const steps = data.dashboard.steps || [];
       const instLight = (steps[6] && steps[6].light) || null;
-      loadBacktestStats(data.dashboard.summary.label, instLight);
+      const alerts = data.dashboard.alerts || [];
+      loadBacktestStats(data.dashboard.summary.label, instLight, alerts);
     } else {
       const c = document.getElementById("backtestCard");
       if (c) c.hidden = true;
@@ -2380,23 +2381,54 @@ function renderHero(dashboard, lastRow, code, info) {
   `;
 }
 
-async function loadBacktestStats(label, instLight) {
+// Priority order when multiple chips fire simultaneously. Reflects
+// per-stock breadth (same-sign rate across the 30-stock universe):
+//   inst_not_confirmed       72% breadth (the AVOID rule)
+//   reversal_inst_confirm_5  62% breadth
+//   inst_lead                58% breadth
+//   reversal_inst_confirm_4  48% breadth (essentially coin flip per code)
+const CHIP_PRIORITY = [
+  "inst_not_confirmed",
+  "reversal_inst_confirm_5",
+  "inst_lead",
+  "reversal_inst_confirm_4",
+];
+
+function _pickChipFromAlerts(alerts) {
+  if (!alerts || alerts.length === 0) return null;
+  const byKey = new Map();
+  for (const a of alerts) {
+    if (a && a.stat_key) byKey.set(a.stat_key, a);
+  }
+  for (const key of CHIP_PRIORITY) {
+    const a = byKey.get(key);
+    if (a) return { key, alert: a };
+  }
+  return null;
+}
+
+async function loadBacktestStats(label, instLight, alerts) {
   const card = document.getElementById("backtestCard");
   if (!card) return;
   card.hidden = true;
+  // The card now shows chip-condition stats (validated edges) when a
+  // chip is firing today. If no chip fires there is nothing actionable
+  // to show — the summary-label fallback was always near-zero anyway.
+  const picked = _pickChipFromAlerts(alerts);
+  if (!picked) return;
   try {
-    const u = `/api/backtest_stats?label=${encodeURIComponent(label)}`;
+    const u = `/api/backtest_stats?chip_key=${encodeURIComponent(picked.key)}`;
     const res = await fetch(u);
     if (!res.ok) return;
     const d = await res.json();
     if (!d.available || !d.horizons) return;
-    renderBacktestStats(label, d, instLight);
+    renderBacktestStats(picked.alert, d);
   } catch (e) {
     // optional
   }
 }
 
-function renderBacktestStats(label, d, instLight) {
+function renderBacktestStats(alert, d) {
   const card = document.getElementById("backtestCard");
   const grid = document.getElementById("btGrid");
   const subtitle = document.getElementById("btSubtitle");
@@ -2404,42 +2436,13 @@ function renderBacktestStats(label, d, instLight) {
   if (!card || !grid) return;
 
   const horizons = ["5", "10", "20", "40"];
-
-  // Pick the conditional bucket from today's step 7 light. Gray (no
-  // valid T86 today, typical for OTC stocks) falls back to the
-  // unconditional view because there is no current 法人 reading to
-  // condition on.
-  const MIN_COND_N = 20;
-  let bucket = null;
-  if (instLight === "green") bucket = "green";
-  else if (instLight === "yellow" || instLight === "red") bucket = "non_green";
-  const bucketLabel = bucket === "green" ? "法人綠"
-    : bucket === "non_green" ? "法人非綠" : null;
-
-  let condHorizons = null;
-  let condEventsTotal = 0;
-  if (bucket && d.by_inst && d.by_inst[bucket]) {
-    condEventsTotal = d.by_inst[bucket].events_total || 0;
-    if (condEventsTotal >= MIN_COND_N) {
-      condHorizons = d.by_inst[bucket].horizons || null;
-    }
-  }
-  const useConditional = condHorizons != null;
-  const sourceHorizons = useConditional ? condHorizons : d.horizons;
   const rows = horizons
-    .map(h => ({ h, ...sourceHorizons[h] }))
+    .map(h => ({ h, ...(d.horizons[h] || {}) }))
     .filter(r => r.n);
   if (rows.length === 0) { card.hidden = true; return; }
 
-  if (useConditional) {
-    subtitle.textContent =
-      `(${label} · 全體 ${d.events_total} · 今日${bucketLabel} ${condEventsTotal})`;
-  } else if (bucket && condEventsTotal > 0) {
-    subtitle.textContent =
-      `(${label} · ${d.events_total} 次 · 今日${bucketLabel} 樣本不足,顯示全體)`;
-  } else {
-    subtitle.textContent = `(${label} · ${d.events_total || 0} 次)`;
-  }
+  const chipText = (alert.icon ? alert.icon + " " : "") + (alert.text || "");
+  subtitle.textContent = `(${chipText} · ${d.events_total || 0} 次)`;
 
   const fmtPct = (v) => {
     if (v == null || isNaN(v)) return "—";
@@ -2453,42 +2456,21 @@ function renderBacktestStats(label, d, instLight) {
   const cls = (v) => (v == null || isNaN(v)) ? "" :
     (v > 0.002 ? "pos" : v < -0.002 ? "neg" : "");
 
-  // Show alpha (stock − TAIEX) instead of raw return: raw return drifts
-  // up with horizon (taiwan tech is mostly bull in the 5y window) so
-  // the user sees "+2.5% 40日" and over-reads it. Alpha is centered
-  // at zero and tells you "did this label do better than just holding
-  // TAIEX". Last column is "vs 全體" (conditional shift, only meaningful
-  // when conditional view active) or "n" (per-horizon sample size).
-  const lastHeader = useConditional ? "vs 全體" : "n";
   const header = [
     `<span class="bt-th">期間</span>`,
     `<span class="bt-th">中位 alpha</span>`,
     `<span class="bt-th">勝率</span>`,
-    `<span class="bt-th">${lastHeader}</span>`,
+    `<span class="bt-th">n</span>`,
   ];
-  const body = rows.flatMap(r => {
-    const a = r.alpha_med;
-    const w = r.alpha_win;
-    let lastCell;
-    if (useConditional) {
-      const uc = (d.horizons || {})[r.h] || {};
-      const delta = (a != null && uc.alpha_med != null)
-        ? (a - uc.alpha_med) : null;
-      lastCell = `<span class="bt-val ${cls(delta)}">${fmtPct(delta)}</span>`;
-    } else {
-      lastCell = `<span class="bt-val">${r.n != null ? r.n : "—"}</span>`;
-    }
-    return [
-      `<span>${r.h} 日</span>`,
-      `<span class="bt-val ${cls(a)}">${fmtPct(a)}</span>`,
-      `<span class="bt-val">${fmtWin(w)}</span>`,
-      lastCell,
-    ];
-  });
+  const body = rows.flatMap(r => [
+    `<span>${r.h} 日</span>`,
+    `<span class="bt-val ${cls(r.alpha_med)}">${fmtPct(r.alpha_med)}</span>`,
+    `<span class="bt-val">${fmtWin(r.alpha_win)}</span>`,
+    `<span class="bt-val">${r.n != null ? r.n : "—"}</span>`,
+  ]);
   grid.innerHTML = [...header, ...body].join("");
-  foot.textContent = useConditional
-    ? `alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 條件 = 今日法人狀態 · 觀察用`
-    : "alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 觀察用,非進場依據";
+  foot.textContent =
+    "alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 觀察用,非進場依據";
   card.hidden = false;
 }
 

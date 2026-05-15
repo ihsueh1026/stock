@@ -1147,6 +1147,7 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                     "icon": "⚠",
                     "tone": "warn",
                     "text": "法人未確認 (紅燈深陷期退出, 法人仍紅)",
+                    "stat_key": "inst_not_confirmed",
                 })
             elif green_entry:
                 inst_green = today_inst == "green"
@@ -1157,6 +1158,7 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                         "icon": "⚠",
                         "tone": "warn",
                         "text": "法人未確認 (綠燈進場, 法人量能皆非綠)",
+                        "stat_key": "inst_not_confirmed",
                     })
                 elif inst_green and not vol_green:
                     alerts.append({
@@ -1164,6 +1166,7 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                         "icon": "✓",
                         "tone": "info",
                         "text": "法人提前+量能未發",
+                        "stat_key": "inst_lead",
                     })
 
     # --- Reversal-quality + 法人綠 confirmation ---
@@ -1187,6 +1190,7 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                 "icon": "✨",
                 "tone": "info",
                 "text": f"反轉 {stars}+法人到位",
+                "stat_key": f"reversal_inst_confirm_{score}",
             })
 
     # --- Divergence (re-using already-computed result from step 3) ---
@@ -1902,23 +1906,40 @@ def _load_backtest_stats() -> dict | None:
 
 
 @app.get("/api/backtest_stats")
-def get_backtest_stats(label: Optional[str] = None):
-    """Return pooled historical forward-return stats for a summary label.
+def get_backtest_stats(label: Optional[str] = None,
+                       chip_key: Optional[str] = None):
+    """Return pooled historical forward-return stats.
 
-    The data comes from `backtest/build_stats.py` which event-studies the
-    7-step dashboard across all stocks in `backtest/data/`. This is
-    OBSERVATIONAL — the backtest's overall conclusion was that no signal
-    has cross-stock alpha. We surface the numbers so users can see what
-    "歷史上看到此狀態" actually meant in this sample.
+    The data comes from `backtest/build_stats.py` which event-studies
+    both the 7-step summary labels and the chip-trigger conditions
+    across all stocks in `backtest/data/`. The summary-label numbers
+    are mostly drift (no cross-stock alpha); the chip-keyed numbers
+    are the validated signals the dashboard actually surfaces.
 
-    Without `label`, returns the full payload. With `label`, returns just
-    that label's bucket (or `available=false` if missing).
+    Three modes:
+      - no args: full payload
+      - label=X: stats for summary label X (legacy)
+      - chip_key=X: stats for chip trigger X (preferred — what the
+        dashboard card uses now)
     """
     data = _load_backtest_stats()
     if not data:
         return {"available": False, "reason": "backtest stats not built"}
-    if label is None:
+    if label is None and chip_key is None:
         return {"available": True, **data}
+    if chip_key is not None:
+        chip = (data.get("chips") or {}).get(chip_key)
+        if not chip or not chip.get("events_total"):
+            return {"available": False, "chip_key": chip_key,
+                    "reason": "no stats for chip"}
+        return {
+            "available": True,
+            "chip_key": chip_key,
+            "stocks": data.get("stocks", []),
+            "generated_at": data.get("generated_at"),
+            "note": data.get("note", ""),
+            **chip,
+        }
     sig = (data.get("signals") or {}).get(label)
     if not sig:
         return {"available": False, "label": label, "reason": "no stats for label"}
