@@ -992,16 +992,20 @@ def _step_8_institutional(window, code, market=MARKET_TWSE, cached_only=False):
 
 
 def _compute_alerts(window, code=None, market=MARKET_TWSE,
-                    divergence=None, cached_only=False):
+                    divergence=None, cached_only=False,
+                    steps=None, history=None):
     """Return a list of alert chips for the current view.
 
     Alerts are observations layered on top of the 7-step lights — they
     don't gate any signal, they just surface stuff a trader would
-    glance at: 爆量 / 量縮 / 法人連 N 日同向 / 背離.
+    glance at: 爆量 / 量縮 / 法人連 N 日同向 / 背離 / 法人未確認.
 
     Each entry is {kind, icon, text, tone} where tone ∈ {info,warn,danger}.
     `cached_only` skips T86 network fetches (passed True from the history
     strip if we ever extend alerts there; current call sites use False).
+    `steps` is today's 7 lights; `history` is the last ~15 days of lights
+    used to detect red-regime-exit / green-regime-entry context for the
+    institutional-confirmation chips.
     """
     alerts: list[dict] = []
 
@@ -1079,6 +1083,70 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                 alerts.append({"kind": "trust_sell_streak", "icon": "📉",
                                "tone": "warn",
                                "text": f"投信連賣 {ts} 日"})
+
+    # --- Institutional confirmation context (red-exit / green-entry) ---
+    # Backed by backtest/red_recovery.py + backtest/green_entry.py:
+    #   - Red-regime exit (>=5 days at >=3 reds, then drop) while 法人 still
+    #     red predicts -2.4% 40d alpha (OOS, n=100, 13/18 codes negative).
+    #   - Green-regime entry (>=3 greens after >=5 quiet days) while
+    #     neither 法人 nor 量能 is green predicts -1.3% vs baseline alpha
+    #     (OOS, n=212, 13/20 codes negative).
+    #   - Green entry while 法人 green BUT 量能 still non-green pools to
+    #     +1.05% above baseline (OOS, n=129) — institutional accumulation
+    #     ahead of broad volume. Breadth is moderate (11/19), so labelled
+    #     as observation not entry signal.
+    # INST_IDX/VOL_IDX match the order in steps[] = [s1, s2, s3, s4, s6, s7, s8]
+    # which renders as UI steps 1..7 = [大盤, 趨勢, 動能, 量能, 持有, 出場, 法人].
+    INST_IDX, VOL_IDX = 6, 3
+    RED_THRESH, RED_DAYS = 3, 5
+    GREEN_THRESH, QUIET_DAYS = 3, 5
+    if steps and history and len(history) >= max(RED_DAYS, QUIET_DAYS) + 1:
+        hist_lights = [h.get("lights") or [] for h in history]
+        if all(len(L) > max(INST_IDX, VOL_IDX) for L in hist_lights):
+            def _count(L, color):
+                return sum(1 for x in L if x == color)
+            hist_red = [_count(L, "red") for L in hist_lights]
+            hist_green = [_count(L, "green") for L in hist_lights]
+            today_inst = steps[INST_IDX]["light"] if len(steps) > INST_IDX else None
+            today_vol = steps[VOL_IDX]["light"] if len(steps) > VOL_IDX else None
+
+            # Red-regime exit: today red_count dropped below threshold after
+            # RED_DAYS consecutive >=threshold bars. history[-1] is today.
+            red_exit = (
+                hist_red[-1] < RED_THRESH
+                and len(hist_red) >= RED_DAYS + 1
+                and all(c >= RED_THRESH for c in hist_red[-RED_DAYS - 1:-1])
+            )
+            green_entry = (
+                hist_green[-1] >= GREEN_THRESH
+                and len(hist_green) >= QUIET_DAYS + 1
+                and all(c < GREEN_THRESH for c in hist_green[-QUIET_DAYS - 1:-1])
+            )
+
+            if red_exit and today_inst == "red":
+                alerts.append({
+                    "kind": "inst_not_confirmed",
+                    "icon": "⚠",
+                    "tone": "warn",
+                    "text": "法人未確認 (紅燈深陷期退出, 法人仍紅)",
+                })
+            elif green_entry:
+                inst_green = today_inst == "green"
+                vol_green = today_vol == "green"
+                if not inst_green and not vol_green:
+                    alerts.append({
+                        "kind": "inst_not_confirmed",
+                        "icon": "⚠",
+                        "tone": "warn",
+                        "text": "法人未確認 (綠燈進場, 法人量能皆非綠)",
+                    })
+                elif inst_green and not vol_green:
+                    alerts.append({
+                        "kind": "inst_lead",
+                        "icon": "✓",
+                        "tone": "info",
+                        "text": "法人提前+量能未發",
+                    })
 
     # --- Divergence (re-using already-computed result from step 3) ---
     if divergence and divergence.get("kind") == "bearish":
@@ -1381,7 +1449,8 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
     history = _history_lights(full_rows, code, market=market)
     reversal = _reversal_quality(window)
     alerts = _compute_alerts(window, code=code, market=market,
-                             divergence=divergence, cached_only=False)
+                             divergence=divergence, cached_only=False,
+                             steps=steps, history=history)
 
     return {
         "as_of": last["date"],

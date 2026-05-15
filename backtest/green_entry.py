@@ -266,33 +266,43 @@ def _print_joint(joint_rets, joint_alpha, horizons, any_rets, any_alpha):
 
 
 def _print_per_code_joint(per_n, per_alpha, codes):
-    """Two actionable cells: 法人綠+量能綠 (fully confirmed bullish) and
-    法人非+量能非 (no institutional or volume confirmation)."""
-    GOOD = (False, False)  # 法人 green AND 量能 green
-    BAD = (True, True)     # both still non-green
-    print(f"  {'code':<6}  {'GOOD n':>6} {'GOOD med':>9}    "
-          f"{'BAD n':>5} {'BAD med':>9}")
-    good_signs = {"+": 0, "-": 0, "0": 0}
-    bad_signs = {"+": 0, "-": 0, "0": 0}
+    """Three cells of interest:
+      LEAD = (False, True)  = 法人綠+量能非 (institutional ahead of volume)
+                              -- the cell that survived OOS validation
+      BOTH = (False, False) = 法人綠+量能綠 (textbook full confirmation)
+      NONE = (True,  True)  = 法人非+量能非 (no confirmation)
+
+    Each row shows per-code n + 40d-alpha median; tallies count how many
+    codes have same-sign alpha as the pooled result.
+    """
+    LEAD = (False, True)
+    BOTH = (False, False)
+    NONE = (True, True)
+    print(f"  {'code':<6}  {'LEAD n':>6} {'LEAD med':>9}   "
+          f"{'BOTH n':>6} {'BOTH med':>9}   {'NONE n':>6} {'NONE med':>9}")
+    tallies = {"LEAD": {"+": 0, "-": 0, "0": 0},
+               "BOTH": {"+": 0, "-": 0, "0": 0},
+               "NONE": {"+": 0, "-": 0, "0": 0}}
     for code in codes:
-        gn = per_n[code][GOOD]
-        bn = per_n[code][BAD]
-        ga = per_alpha[code][GOOD]
-        ba = per_alpha[code][BAD]
-        gm = statistics.median(ga) if ga else None
-        bm = statistics.median(ba) if ba else None
-        if gm is not None:
-            good_signs["+" if gm > 0 else ("-" if gm < 0 else "0")] += 1
-        if bm is not None:
-            bad_signs["+" if bm > 0 else ("-" if bm < 0 else "0")] += 1
-        print(f"  {code:<6}  {gn:>6} {_fmt_pct(gm):>9}    "
-              f"{bn:>5} {_fmt_pct(bm):>9}")
-    print(f"  GOOD per-code sign tally: + {good_signs['+']}   "
-          f"- {good_signs['-']}   0 {good_signs['0']}   "
-          f"(expect mostly '+' if bullish signal is broad)")
-    print(f"  BAD  per-code sign tally: + {bad_signs['+']}   "
-          f"- {bad_signs['-']}   0 {bad_signs['0']}   "
-          f"(expect mostly '-' if 'no confirmation' is risk)")
+        cells = [("LEAD", LEAD), ("BOTH", BOTH), ("NONE", NONE)]
+        row = [f"  {code:<6}"]
+        for name, key in cells:
+            n = per_n[code][key]
+            samples = per_alpha[code][key]
+            m = statistics.median(samples) if samples else None
+            if m is not None:
+                tallies[name]["+" if m > 0 else ("-" if m < 0 else "0")] += 1
+            row.append(f"  {n:>6} {_fmt_pct(m):>9}")
+        print("".join(row))
+    print(f"  LEAD per-code sign tally (expect mostly '+'): "
+          f"+ {tallies['LEAD']['+']}   - {tallies['LEAD']['-']}   "
+          f"0 {tallies['LEAD']['0']}")
+    print(f"  BOTH per-code sign tally: "
+          f"+ {tallies['BOTH']['+']}   - {tallies['BOTH']['-']}   "
+          f"0 {tallies['BOTH']['0']}")
+    print(f"  NONE per-code sign tally (expect mostly '-'): "
+          f"+ {tallies['NONE']['+']}   - {tallies['NONE']['-']}   "
+          f"0 {tallies['NONE']['0']}")
 
 
 def main():
