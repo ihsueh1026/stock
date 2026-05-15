@@ -2415,21 +2415,44 @@ async function loadBacktestStats(label, instLight, alerts) {
   const card = document.getElementById("backtestCard");
   if (!card) return;
   card.hidden = true;
-  // The card now shows chip-condition stats (validated edges) when a
-  // chip is firing today. If no chip fires there is nothing actionable
-  // to show — the summary-label fallback was always near-zero anyway.
+  // The card shows chip-condition stats (validated edges) when a chip
+  // with stat_key is firing today. When no such chip fires we still
+  // surface a one-line placeholder so the section doesn't silently
+  // vanish — users learn the card exists and what triggers it.
   const picked = _pickChipFromAlerts(alerts);
-  if (!picked) return;
+  if (!picked) {
+    renderBacktestPlaceholder();
+    return;
+  }
   try {
     const u = `/api/backtest_stats?chip_key=${encodeURIComponent(picked.key)}`;
     const res = await fetch(u);
-    if (!res.ok) return;
+    if (!res.ok) {
+      renderBacktestPlaceholder();
+      return;
+    }
     const d = await res.json();
-    if (!d.available || !d.horizons) return;
+    if (!d.available || !d.horizons) {
+      renderBacktestPlaceholder();
+      return;
+    }
     renderBacktestStats(picked.alert, d);
   } catch (e) {
-    // optional
+    renderBacktestPlaceholder();
   }
+}
+
+function renderBacktestPlaceholder() {
+  const card = document.getElementById("backtestCard");
+  const grid = document.getElementById("btGrid");
+  const subtitle = document.getElementById("btSubtitle");
+  const foot = document.getElementById("btFoot");
+  if (!card || !grid) return;
+  subtitle.textContent = "(目前無已驗證 chip 觸發)";
+  grid.innerHTML = "";
+  foot.textContent =
+    "已驗證 chip:⚠ 法人未確認 / ✓ 法人提前 / ✨ 反轉+法人到位(3★/4★/5★)";
+  card.hidden = false;
 }
 
 function renderBacktestStats(alert, d) {
