@@ -45,7 +45,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from stock_web.app import _compute_rows, _market_for, MARKET_TWSE  # noqa: E402
+from stock_web.app import (  # noqa: E402
+    _compute_rows, _market_for, MARKET_TWSE, SUMMARY_LABELS,
+)
 from backtest.study import (  # noqa: E402
     DATA_DIR, STEP_NAMES,
     _compute_lights, forward_return, forward_alpha,
@@ -55,7 +57,7 @@ from backtest.study import (  # noqa: E402
 INST_IDX, VOL_IDX = 6, 3
 MAX_HOLD = 60
 REGIME_RED = 3
-BAD_SUMMARIES = {"🔴 趨勢轉弱", "🟠 訊號分歧"}
+BAD_SUMMARIES = {SUMMARY_LABELS["exit"], SUMMARY_LABELS["watch"]}
 
 
 # ---------- entry triggers ----------

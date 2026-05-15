@@ -135,6 +135,21 @@ MARKET_TWSE = "twse"   # 上市
 MARKET_OTC = "otc"     # 上櫃
 
 
+# Summary labels emitted by `_summary()`. Shared with backtest scripts
+# (backtest/study.py SIGNAL_DEFS, backtest/exit_rules.py BAD_SUMMARIES)
+# so a label-string change here propagates automatically instead of
+# silently producing empty event samples. Keys are stable identifiers;
+# values are the user-facing strings, free to evolve.
+SUMMARY_LABELS = {
+    "strong":     "🟢 多頭擴張",
+    "sub-strong": "🟢 多頭發展",
+    "reversal":   "🔵 反彈訊號",
+    "exit":       "🔴 趨勢轉弱",
+    "watch":      "🟠 訊號分歧",
+    "wait":       "🟡 盤整中",
+}
+
+
 T86_URL = "https://www.twse.com.tw/rwd/zh/fund/T86"
 T86_OTC_URL = "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
 T86_HTTP_HEADERS = {
@@ -1183,20 +1198,20 @@ def _summary(steps):
     # alpha across stocks/horizons, so these are observation tags.
     if (s1_light == "green" and first_4_green == 4
             and s7_light != "red" and s8_light != "red"):
-        light, label = "green", "🟢 多頭擴張"
+        light, label = "green", SUMMARY_LABELS["strong"]
     elif (s1_light == "green" and first_4_green >= 3
             and s7_light != "red" and s8_light != "red"):
-        light, label = "green", "🟢 多頭發展"
+        light, label = "green", SUMMARY_LABELS["sub-strong"]
     elif (s1_light == "green" and s3_light == "green"
             and s2_light != "green" and s4_light != "green"
             and s7_light != "red" and s8_light != "red"):
-        light, label = "blue", "🔵 反彈訊號"
+        light, label = "blue", SUMMARY_LABELS["reversal"]
     elif s7_light == "red":
-        light, label = "red", "🔴 趨勢轉弱"
+        light, label = "red", SUMMARY_LABELS["exit"]
     elif reds >= 2:
-        light, label = "orange", "🟠 訊號分歧"
+        light, label = "orange", SUMMARY_LABELS["watch"]
     else:
-        light, label = "yellow", "🟡 盤整中"
+        light, label = "yellow", SUMMARY_LABELS["wait"]
 
     return {
         "light": light, "label": label,
