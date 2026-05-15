@@ -7,6 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # install (one-time)
 pip3 install --user fastapi uvicorn requests openpyxl
+# optional: enables LLM sentiment/summary on MOPS news (news_llm.py)
+pip3 install --user anthropic
+export ANTHROPIC_API_KEY=...
 
 # web app — run from repo root, NOT from stock_web/
 python3 -m uvicorn stock_web.app:app --host 0.0.0.0 --port 8000
@@ -30,6 +33,17 @@ The repo is a Taiwan-stock (TWSE 上市 + TPEX 上櫃) technical-analysis tool w
 
 - **[stock_web/static/index.html](stock_web/static/index.html)** — entire frontend in one file (HTML + CSS + JS). Dark theme, mobile-aware, no build tooling.
 
+- **Sibling fetchers in [stock_web/](stock_web/)** — each module is a single-responsibility fetcher with its own daily-cached JSON output and a matching `/api/...` endpoint:
+  - [news_fetcher.py](stock_web/news_fetcher.py) — MOPS 重大訊息 (t05st01). Parses Big5 HTML, throttles at 2 s/request.
+  - [news_llm.py](stock_web/news_llm.py) — optional: calls Anthropic API (Haiku 4.5) to tag each 重訊 as 利多/利空/中性 + summary. **Fails soft**: missing `anthropic` SDK or `ANTHROPIC_API_KEY` → items pass through unchanged. Idempotent — items already carrying `sentiment` + `summary` are skipped, so re-runs against partially-annotated cache are free. System prompt is `cache_control:ephemeral` for the 5-min prompt-cache window.
+  - [fundamentals_fetcher.py](stock_web/fundamentals_fetcher.py) — MOPS t146sb05 簡明 statements (3-4 most recent periods). Server-side derives margin % and pre-tax ROE proxy so the SPA doesn't redo arithmetic. Amounts arrive in 千元.
+  - [eps_history_fetcher.py](stock_web/eps_history_fetcher.py) — multi-year quarterly EPS via MOPS ajax_t164sb04. **Q4 quirk**: t164sb04 returns standalone EPS for Q1-Q3 but **cumulative full-year** EPS for Q4 (because the Q4 filing is the annual report). The fetcher derives Q4 = annual − (Q1+Q2+Q3) explicitly.
+  - [dividend_fetcher.py](stock_web/dividend_fetcher.py) — TWSE/TPEX OpenAPI (BWIBBU_ALL / tpex_mainboard_peratio_analysis) for yield + per-share cash dividend. TWSE only exposes yield; TPEX exposes both.
+  - [industry_pe_fetcher.py](stock_web/industry_pe_fetcher.py) — joins the same OpenAPI PER feeds with the daily company-info dump to compute median/quartile P/E per industry. Negative-or-zero PERs are excluded.
+  - [revenue_fetcher.py](stock_web/revenue_fetcher.py) — monthly 月營收 from `t21sc03_{ROC_Y}_{M}_0.html`. Cached per (market, year, month) under names like `revenue_sii_202604.json` — these files are **immutable once published** and intentionally sit outside the dated-cache purge window (the filename has no YYYYMMDD suffix, so `_parse_cache_date` returns None and the purger skips them).
+
+- **[backtest/](backtest/)** — event-study pipeline. [study.py](backtest/study.py) walks the full history of a single stock, recomputes the 7 lights at every bar (no look-ahead), and measures forward returns / alpha at 5/10/20/40 trading days for each summary-label transition. [build_stats.py](backtest/build_stats.py) pools those results across every stock under `backtest/data/*.json` into `backtest/data/_summary_stats.json`, which the live dashboard reads via `/api/backtest_stats` to display historical hit rates next to the current summary label. [prefetch.py](backtest/prefetch.py) / [prefetch_t86.py](backtest/prefetch_t86.py) seed the long-horizon caches study.py needs.
+
 ### Trading-day key
 
 `_trading_day()` in [stock_web/app.py](stock_web/app.py) returns today's calendar date, walking back over weekends to the prior Friday. All daily caches (`{code}_{YYYYMMDD}.json`, `taiex_{YYYYMMDD}.json`, `t86_{YYYYMMDD}.json`, `companies_{YYYYMMDD}.json`) share this same tag. If today's TAIEX close hasn't been published yet (e.g. fetched intraday or right after 13:30 close), `taiex` rows come back null and the frontend's `taiexBar` ([stock_web/static/index.html](stock_web/static/index.html)) prompts the user to enter the close manually — which `PUT /api/taiex/today` persists and back-patches into existing per-stock caches.
@@ -41,7 +55,7 @@ All caches are flat JSON files in `stock_web/cache/`, keyed by date in the filen
 - `{code}_{YYYYMMDD}.json` — per-stock parsed series + computed indicators. Stored as `{"code", "market", "rows": [...]}`. Old caches without `adx` are backfilled in-memory on load via `_backfill_adx`.
 - `taiex_{YYYYMMDD}.json` — TAIEX close history (date-iso → close).
 - `taiex_manual.json` — user-entered TAIEX overrides per date (PUT/DELETE `/api/taiex/today`). Overlay applies on top of auto cache. **Persistent — never purged** (no date suffix).
-- `t86_{YYYYMMDD}.json` / `t86otc_{YYYYMMDD}.json` — three-major-investor net-shares per stock for that date. **Empty results are NEVER persisted** (see `_fetch_t86`) — empty dict means non-trading-day or transient API failure, and we want the next request to retry.
+- `t86_{YYYYMMDD}.json` / `t86otc_{YYYYMMDD}.json` — three-major-investor net-shares per stock for that date. **Empty OR truncated results are NEVER persisted** (see `_fetch_t86` + `_t86_looks_complete`). TWSE occasionally serves a partial dump that's missing 200-300 listings but still includes warrants/ETFs, so a raw entry count isn't enough — we count 4-digit codes and require ≥ `T86_TWSE_MIN_STOCKS` / `T86_OTC_MIN_STOCKS`. Incomplete dumps would otherwise pin step 7 (法人) to gray for affected stocks indefinitely.
 - `companies[_otc]_{YYYYMMDD}.json` — daily TWSE/TPEX company-info dump (~1MB). One fetch per trading day.
 
 **Retention**: dated cache files older than `CACHE_RETENTION_DAYS` (7) are deleted on startup by `_purge_old_caches()`, called from the FastAPI startup event in a background thread. The 7-day floor is load-bearing — `_load_stock` looks back through the same window to find a prior cache for incremental refresh (see below). Don't drop below 7 without auditing both.
@@ -62,11 +76,19 @@ Concurrency: per-key locks via `_lock_for(key)` (with a guard mutex for the lock
 
 The trigger logic and cell ranges in `_step_*` functions mirror the formulas in `stock.xlsx` (see comments referencing B6:B25, N32, etc.) — when changing thresholds, keep that mental cross-reference in mind.
 
+**Divergence + alerts (layered on top of the 7 lights, not gates)**: `_divergence()` compares the last 5 bars to the prior 10 looking for price/RSI6 disagreement; a bearish (頂背離) result soft-downgrades step 3 green→yellow, and either direction surfaces as an alert chip. `_compute_alerts()` emits chips for 爆量 / 量縮 / 法人連 N 日同向 / 背離 — these annotate the current view only and don't recompute over the history strip. Alerts respect `cached_only` so they can be evaluated without fanning out T86 fetches.
+
 ### API surface (all under `/api/`)
 
 - `GET /api/stock/{code}?rows=N` — full series + dashboard (rows clamped 1..500).
 - `GET|POST /api/watchlist`, `PUT|DELETE /api/watchlist/{code}`, `POST /api/watchlist/{code}/refresh`, `POST /api/watchlist/refresh` (batch — refresh every code), `POST /api/watchlist/reorder` — watchlist persisted to [stock_web/watchlist.json](stock_web/watchlist.json).
 - `GET|PUT|DELETE /api/taiex/today` — manual TAIEX override. PUT also patches every existing per-stock cache for today whose last row's `taiex` is null (so dashboards reflect the override without a full refetch).
+- `GET /api/news/{code}?days=14` — MOPS 重訊 with optional LLM annotations. The frontend renders a "copy news for Claude" button when `news_llm.is_available()` returns false, so users without an API key can still get sentiment by pasting into a chat.
+- `GET /api/fundamentals/{code}?close=...` — annual EPS/margins/equity panel. `close` is optional and only used to derive a trailing P/E.
+- `GET /api/eps_history/{code}?years=3` — multi-year quarterly EPS trend (with the Q4 fix-up).
+- `GET /api/dividend/{code}?close=...`, `GET /api/industry_pe/{code}?per=...` — yield + per-industry P/E context.
+- `GET /api/revenue/{code}` — monthly revenue series (immutable monthly cache).
+- `GET /api/backtest_stats?label=...` — historical forward-return distribution for the current summary label, served from `backtest/data/_summary_stats.json`. **Stale unless [backtest/build_stats.py](backtest/build_stats.py) is re-run** after collecting fresh per-stock studies.
 
 `/api/watchlist/{code}/refresh` and `/api/watchlist/refresh` are both synchronous. With incremental refresh and warm shared caches (TAIEX/T86/companies), single-stock refresh is a few seconds and a 30-stock batch is typically under a minute. Cold first-ever fetch with no prior cache still hits the 13-month walk (~30–60s per stock).
 
@@ -77,3 +99,6 @@ The trigger logic and cell ranges in `_step_*` functions mirror the formulas in 
 - When adding step logic that needs T86 data, respect `cached_only` — historical-strip recomputes must not fan out network calls.
 - Stock codes are validated as 4–6 digits in `_validate_code`; the file-prefix check in `taiex_today_put` (`prefix.isdigit() and 4 <= len(prefix) <= 6`) keeps non-stock caches (`taiex_`, `t86_`, `companies_`) from being patched.
 - The web layer's `WEB_WARMUP_DAYS = 60` is shorter than the CLI's `WARMUP_DAYS = 250`; this trades a tiny MACD-EMA precision loss for response time. Don't unify them without understanding the trade-off.
+- Summary labels are matched by **exact string** in `backtest/study.py` (`SIGNAL_DEFS`). When editing `_summary()` wording, update `SIGNAL_DEFS` in lockstep or the event study silently produces empty samples and `/api/backtest_stats` goes blank.
+- `news_llm.py` must keep failing soft. The MOPS news panel is the only feature that touches a paid API; never make it a hard dependency or fan it out into batch refresh paths.
+- Monthly revenue files (`revenue_*_{YYYYMM}.json`) must keep their non-YYYYMMDD filename so `_purge_old_caches()` skips them. Don't rename to a date-suffixed scheme without teaching the purger.
