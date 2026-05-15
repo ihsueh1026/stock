@@ -111,6 +111,37 @@ on next iteration: (a) keep but re-frame text from "(跌市裡反向)" to
 "(跌市裡偏弱)", or (b) move threshold to 7.5% which has the largest
 bear sample and consistent ROBUST verdict.
 
+## 50-stock universe rerun (2026-05)
+
+Universe expanded from 30 to 50 TWSE tech stocks by adding watchlist
+additions (2347, 2352, 2354, 2376, 2383, 2449, 4938) and breadth
+fill-ins (2474, 2451, 6770, 4961, 5347, 2409, 3481, 8210, 6515, 2360,
+2455, 3596, 6533). Bear-regime test rerun on the expanded pool:
+
+| chip | bull n | bull 40d alpha | bear n | bear 40d alpha | verdict |
+|---|---|---|---|---|---|
+| AVOID (inst_not_confirmed) | 824 | -1.78% | 42 | -3.19% | ROBUST |
+| LEAD (inst_lead) | 253 | +0.17% | 124 | -0.08% | noise both sides |
+| 反轉 3★+綠 | 488 | -0.04% | 147 | +0.04% | noise both sides |
+| 反轉 4★+綠 | 298 | +1.70% | 130 | +1.47% | ROBUST |
+| 反轉 5★+綠 | 137 | +0.06% | 81 | +2.84% | bear only |
+
+**Major changes vs the 30-stock pool**: LEAD's bull-period edge
+collapsed from +1.58% to +0.17% (effectively gone), and the 3★+綠
+edge similarly vanished. AVOID and the 4-5★ reversal chips kept their
+direction, though magnitudes dropped (5★+綠 from +3.3% bull / +3.8%
+bear → +0.06% bull / +2.84% bear).
+
+Production responded with two changes shipped in commit (next): the
+LEAD chip was removed (no longer fires), and the reversal+綠 chip
+threshold reverted from score>=3 to score>=4. AVOID stays as-is.
+The bear-regime LEAD demotion (info → warn) becomes irrelevant since
+LEAD no longer fires; the regime tag on the TAIEX bar stays for the
+reversal chips' bear vs bull context.
+
+The 30-stock numbers above are kept for the historical context — they
+were the basis for the original chip selection and shipped UI copy.
+
 ## Caveats
 
 - Bear sample sizes are small at the 10% default (AVOID bear n=19,

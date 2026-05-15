@@ -1165,17 +1165,17 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                                "tone": "warn",
                                "text": f"投信連賣 {ts} 日"})
 
-    # --- Institutional confirmation context (red-exit / green-entry) ---
-    # Backed by backtest/red_recovery.py + backtest/green_entry.py:
+    # --- AVOID (institutional non-confirmation) ---
+    # Backed by backtest/red_recovery.py + backtest/green_entry.py and
+    # re-validated on the 50-stock universe (build_stats output):
     #   - Red-regime exit (>=5 days at >=3 reds, then drop) while 法人 still
-    #     red predicts -2.4% 40d alpha (OOS, n=100, 13/18 codes negative).
-    #   - Green-regime entry (>=3 greens after >=5 quiet days) while
-    #     neither 法人 nor 量能 is green predicts -1.3% vs baseline alpha
-    #     (OOS, n=212, 13/20 codes negative).
-    #   - Green entry while 法人 green BUT 量能 still non-green pools to
-    #     +1.05% above baseline (OOS, n=129) — institutional accumulation
-    #     ahead of broad volume. Breadth is moderate (11/19), so labelled
-    #     as observation not entry signal.
+    #     red, OR green-regime entry (>=3 greens after >=5 quiet days) while
+    #     both 法人 and 量能 are non-green: pooled 40d alpha −1.89% / 44%,
+    #     bear-regime sub-sample −3.19% (ROBUST). n=866 across 50 codes.
+    # The LEAD branch (green entry with 法人 green but 量能 non-green) used
+    # to fire on the original 30-stock sample at +1.2% / 54%, but on the
+    # 50-stock universe collapsed to +0.06% / 50% (essentially noise).
+    # Removed in production; build_stats still computes it for reference.
     # INST_IDX/VOL_IDX match the order in steps[] = [s1, s2, s3, s4, s6, s7, s8]
     # which renders as UI steps 1..7 = [大盤, 趨勢, 動能, 量能, 持有, 出場, 法人].
     INST_IDX, VOL_IDX = 6, 3
@@ -1223,39 +1223,23 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                         "text": "法人未確認 (綠燈進場, 法人量能皆非綠)",
                         "stat_key": "inst_not_confirmed",
                     })
-                elif inst_green and not vol_green:
-                    # Bear-regime test (backtest/bear_regime_results.md):
-                    # LEAD's bull +1.58% / 58% flips to bear -0.76% /
-                    # 47%. Demote tone and append a hint when today's
-                    # TAIEX is in bear regime so the user reads it as
-                    # weakened, not a confirming signal.
-                    is_bear = taiex_regime == "bear"
-                    alerts.append({
-                        "kind": "inst_lead",
-                        "icon": "✓",
-                        "tone": "warn" if is_bear else "info",
-                        "text": ("法人提前+量能未發 (跌市裡反向)"
-                                 if is_bear else "法人提前+量能未發"),
-                        "stat_key": "inst_lead",
-                    })
+                # LEAD (inst_green && !vol_green) intentionally not emitted:
+                # 50-stock universe shows no pooled edge (+0.06% / 50%).
 
     # --- Reversal-quality + 法人綠 confirmation ---
-    # backtest/reversal_quality_study.py on 30 stocks:
-    #   - score==5 + 法人=綠  → 40d alpha +3.4%, win 64%, 16/26 codes
-    #     positive (62% same-sign). n=117 events.
-    #   - score==4 + 法人=綠  → 40d alpha +3.5%, win 57%, 14/29 codes
-    #     positive (48% — coin flip per code). n=246 events.
-    #   - score==3 + 法人=綠  → 40d alpha +1.1%, win 53%, 19/29 codes
-    #     positive (66% — best breadth of the three). n=369 events.
-    # All three tiers fire the chip with star count rendered in text,
-    # so the user reads star count as confidence: 5★ best magnitude,
-    # 3★ best per-stock breadth, 4★ in the middle but coin-flip breadth.
+    # backtest/reversal_quality_study.py on the 50-stock universe:
+    #   - score==5 + 法人=綠  → 40d alpha +1.0% / 54%, bear sub-sample
+    #     +2.84% / 61% — edge concentrated in drawdowns. n=218.
+    #   - score==4 + 法人=綠  → 40d alpha +1.7% / 55%, similar in bear
+    #     (+1.47%). n=428 — the steadiest reversal tier.
+    # score==3 was tried as a chip but collapsed to -0.03% / 50% on the
+    # 50-stock universe (no edge), so we keep the threshold at >=4.
     if (steps and reversal_quality
             and reversal_quality.get("score") is not None
             and len(steps) > INST_IDX):
         score = reversal_quality["score"]
         inst_light = steps[INST_IDX]["light"]
-        if inst_light == "green" and score >= 3:
+        if inst_light == "green" and score >= 4:
             stars = "★" * score
             alerts.append({
                 "kind": "reversal_inst_confirm",

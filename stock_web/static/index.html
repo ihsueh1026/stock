@@ -1189,22 +1189,20 @@
         <details class="overall-rules">
           <summary>歷史狀態規則</summary>
           <p class="rules-note" style="margin-top: 8px;">
-            樣本來自 30 檔台股科技 2021-04 ~ 2026-05 共 5 年。任一 chip 觸發時,
+            樣本來自 50 檔台股科技 2021-04 ~ 2026-05 共 5 年。任一 chip 觸發時,
             上方 card 顯示該 chip 歷史命中分布。中位 alpha = 該檔報酬 − 同期間 TAIEX。
           </p>
           <ol>
-            <li><b>⚠ 法人未確認</b> (AVOID):紅燈深陷期退出但法人仍紅,或綠燈進場但法人量能皆非綠。歷史 40d alpha -2.1% / 勝率 42%,跌市更兇 (-8.5%)。</li>
-            <li><b>✓ 法人提前+量能未發</b> (LEAD):綠燈進場 + 法人綠 + 量能非綠。歷史 40d alpha +1.2% / 勝率 54%,跌市裡偏弱。</li>
-            <li><b>✨ 反轉 ★★★+法人到位</b>:反轉品質分數 3 + 法人綠。歷史 40d alpha +1.1% / 勝率 53%,同向 66% (最廣)。</li>
-            <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質分數 4 + 法人綠。歷史 40d alpha +3.5% / 勝率 57%,同向 48%。</li>
-            <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質分數 5 + 法人綠。歷史 40d alpha +3.4% / 勝率 64%,跌市裡 win 升至 68%。</li>
+            <li><b>⚠ 法人未確認</b> (AVOID):紅燈深陷期退出但法人仍紅,或綠燈進場但法人量能皆非綠。歷史 40d alpha -1.9% / 勝率 44%,跌市加深至 -3.2%。</li>
+            <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質分數 4 + 法人綠。歷史 40d alpha +1.7% / 勝率 55%,跌市表現相近 (+1.5%) — 最穩定的反轉訊號。</li>
+            <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質分數 5 + 法人綠。歷史 40d alpha +1.0% / 勝率 54%,跌市裡躍升至 +2.8% / 61%。</li>
           </ol>
           <p class="rules-note">
             顯示優先順序:<br>
-            1. <b>該檔自身歷史</b> (≥3 次) — 在 30 檔回測池內的股票<br>
+            1. <b>該檔自身歷史</b> (≥3 次) — 在 50 檔回測池內的股票<br>
             2. <b>今日 TAIEX regime 條件池</b> (≥15 次) — 池外股票<br>
             3. <b>全池中位</b> — 兜底<br>
-            「同向」= 30 檔個股 40d alpha 中位與池子方向一致的比例,>60% 代表訊號穩定。
+            原 LEAD (法人提前) 與 3★+綠 chip 已移除:50 檔池上邊際接近零。
           </p>
         </details>
         <details class="overall-rules">
@@ -2421,21 +2419,18 @@ function renderHero(dashboard, lastRow, code, info) {
   `;
 }
 
-// Priority order when multiple chips fire simultaneously. Reflects
-// per-stock breadth (same-sign rate across the 30-stock universe):
-//   inst_not_confirmed       72% breadth (the AVOID rule)
-//   reversal_inst_confirm_3  66% breadth, smaller +1% magnitude
-//   reversal_inst_confirm_5  62% breadth, +3% magnitude
-//   inst_lead                58% breadth
-//   reversal_inst_confirm_4  48% breadth (essentially coin flip per code)
-// 5★ ranks above 3★ because +3% beats +1% even though breadth is
-// slightly lower; 4★ falls last because per-code is coin flip.
+// Priority order when multiple chips fire simultaneously. Updated
+// against the 50-stock universe (see build_stats output):
+//   inst_not_confirmed       40d −1.89% / win 44%, bear −3.2% (ROBUST)
+//   reversal_inst_confirm_4  40d +1.70% / win 55%, similar in bear
+//   reversal_inst_confirm_5  40d +1.04% / win 54%, bear +2.84% / 61%
+// LEAD (inst_lead) and 3★+綠 (reversal_inst_confirm_3) were removed
+// after the 50-stock pool collapsed their edge to ~zero; their stats
+// still live in _summary_stats.json but the chips no longer fire.
 const CHIP_PRIORITY = [
   "inst_not_confirmed",
-  "reversal_inst_confirm_5",
-  "reversal_inst_confirm_3",
-  "inst_lead",
   "reversal_inst_confirm_4",
+  "reversal_inst_confirm_5",
 ];
 
 function _pickChipFromAlerts(alerts) {
