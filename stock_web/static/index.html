@@ -1873,7 +1873,9 @@ async function loadStock(code) {
     renderAlerts(data.dashboard.alerts || []);
     renderReversalQuality(data.dashboard.reversal_quality);
     if (data.dashboard.summary && data.dashboard.summary.label) {
-      loadBacktestStats(data.dashboard.summary.label);
+      const steps = data.dashboard.steps || [];
+      const instLight = (steps[6] && steps[6].light) || null;
+      loadBacktestStats(data.dashboard.summary.label, instLight);
     } else {
       const c = document.getElementById("backtestCard");
       if (c) c.hidden = true;
@@ -2379,7 +2381,7 @@ function renderHero(dashboard, lastRow, code, info) {
   `;
 }
 
-async function loadBacktestStats(label) {
+async function loadBacktestStats(label, instLight) {
   const card = document.getElementById("backtestCard");
   if (!card) return;
   card.hidden = true;
@@ -2389,13 +2391,13 @@ async function loadBacktestStats(label) {
     if (!res.ok) return;
     const d = await res.json();
     if (!d.available || !d.horizons) return;
-    renderBacktestStats(label, d);
+    renderBacktestStats(label, d, instLight);
   } catch (e) {
     // optional
   }
 }
 
-function renderBacktestStats(label, d) {
+function renderBacktestStats(label, d, instLight) {
   const card = document.getElementById("backtestCard");
   const grid = document.getElementById("btGrid");
   const subtitle = document.getElementById("btSubtitle");
@@ -2404,12 +2406,42 @@ function renderBacktestStats(label, d) {
   if (!card || !grid) return;
 
   const horizons = ["5", "10", "20", "40"];
+
+  // Pick the conditional bucket from today's step 7 light. Gray (no
+  // valid T86 today, typical for OTC stocks) falls back to the
+  // unconditional view because there is no current 法人 reading to
+  // condition on.
+  const MIN_COND_N = 20;
+  let bucket = null;
+  if (instLight === "green") bucket = "green";
+  else if (instLight === "yellow" || instLight === "red") bucket = "non_green";
+  const bucketLabel = bucket === "green" ? "法人=綠"
+    : bucket === "non_green" ? "法人非綠" : null;
+
+  let condHorizons = null;
+  let condEventsTotal = 0;
+  if (bucket && d.by_inst && d.by_inst[bucket]) {
+    condEventsTotal = d.by_inst[bucket].events_total || 0;
+    if (condEventsTotal >= MIN_COND_N) {
+      condHorizons = d.by_inst[bucket].horizons || null;
+    }
+  }
+  const useConditional = condHorizons != null;
+  const sourceHorizons = useConditional ? condHorizons : d.horizons;
   const rows = horizons
-    .map(h => ({ h, ...d.horizons[h] }))
+    .map(h => ({ h, ...sourceHorizons[h] }))
     .filter(r => r.n);
   if (rows.length === 0) { card.hidden = true; return; }
 
-  subtitle.textContent = `(${label} · ${d.events_total || 0} 次)`;
+  if (useConditional) {
+    subtitle.textContent =
+      `(${label} · 全體 ${d.events_total} · 今日${bucketLabel} ${condEventsTotal})`;
+  } else if (bucket && condEventsTotal > 0) {
+    subtitle.textContent =
+      `(${label} · ${d.events_total} 次 · 今日${bucketLabel} 樣本不足,顯示全體)`;
+  } else {
+    subtitle.textContent = `(${label} · ${d.events_total || 0} 次)`;
+  }
   sampleMeta.textContent = `樣本:${(d.stocks || []).join(", ")}`;
 
   const fmtPct = (v) => {
@@ -2424,15 +2456,26 @@ function renderBacktestStats(label, d) {
   const cls = (v) => (v == null || isNaN(v)) ? "" :
     (v > 0.002 ? "pos" : v < -0.002 ? "neg" : "");
 
+  // Last column is the "edge" against a baseline: vs 全體 when
+  // conditional (does today's 法人 state shift this label's median?),
+  // otherwise vs 隨機 (does this label beat any-day baseline?).
+  const lastHeader = useConditional ? "vs 全體" : "vs 隨機";
   const header = [
     `<span class="bt-th">期間</span>`,
     `<span class="bt-th">報酬中位</span>`,
     `<span class="bt-th">勝率</span>`,
-    `<span class="bt-th">vs 隨機</span>`,
+    `<span class="bt-th">${lastHeader}</span>`,
   ];
   const body = rows.flatMap(r => {
-    const delta = (r.ret_med != null && r.rand_med != null)
-      ? (r.ret_med - r.rand_med) : null;
+    let delta = null;
+    if (useConditional) {
+      const uc = (d.horizons || {})[r.h] || {};
+      if (r.ret_med != null && uc.ret_med != null) {
+        delta = r.ret_med - uc.ret_med;
+      }
+    } else if (r.ret_med != null && r.rand_med != null) {
+      delta = r.ret_med - r.rand_med;
+    }
     return [
       `<span>${r.h} 日</span>`,
       `<span class="bt-val ${cls(r.ret_med)}">${fmtPct(r.ret_med)}</span>`,
@@ -2441,7 +2484,9 @@ function renderBacktestStats(label, d) {
     ];
   });
   grid.innerHTML = [...header, ...body].join("");
-  foot.textContent = "觀察用,非進場依據 · 隨機基準 = 同期間樣本內任意日的前向報酬";
+  foot.textContent = useConditional
+    ? `今日法人狀態下的條件分布 · 觀察用,非進場依據`
+    : "觀察用,非進場依據 · 隨機基準 = 同期間樣本內任意日的前向報酬";
   card.hidden = false;
 }
 

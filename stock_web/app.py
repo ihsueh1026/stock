@@ -1441,7 +1441,17 @@ def _reversal_quality(window: list[dict]) -> dict | None:
 
 
 def compute_dashboard(full_rows: list[dict], code: str | None = None,
-                      market: str = MARKET_TWSE) -> dict:
+                      market: str = MARKET_TWSE, *,
+                      compact: bool = False) -> dict:
+    """Compute the dashboard payload from a stock's row series.
+
+    `compact=True` skips the 15-day history strip, alerts, price zones,
+    distance and stop-loss panel — used by the watchlist card, which
+    only renders today's 7-light state + summary + reversal_quality.
+    Drops per-stock cost from ~3,150 step computations (15 days × 7
+    lights + alerts walk) down to a single 7-step compute, which is
+    what dominates watchlist load time on a 20-30 code list.
+    """
     if not full_rows:
         return {"as_of": None, "sigma": None, "steps": [],
                 "summary": None, "price_zones": None, "distance": [],
@@ -1456,13 +1466,26 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
     divergence = _divergence(window)
     steps = _compute_steps(window, code, market=market,
                            t86_cached_only=False, divergence=divergence)
-    s6 = steps[4]  # 持有
-
     summary = _summary(steps)
+    reversal = _reversal_quality(window)
+
+    if compact:
+        return {
+            "as_of": last["date"],
+            "sigma": sigma,
+            "steps": steps,
+            "summary": summary,
+            "reversal_quality": reversal,
+            "price_zones": None,
+            "distance": [],
+            "history": [],
+            "alerts": [],
+        }
+
+    s6 = steps[4]  # 持有
     zones = _price_zones(summary, last, sigma, s6["light"])
     distance = _distance(last, sigma) + _stoploss_levels(last, sigma)
     history = _history_lights(full_rows, code, market=market)
-    reversal = _reversal_quality(window)
     alerts = _compute_alerts(window, code=code, market=market,
                              divergence=divergence, cached_only=False,
                              steps=steps, history=history)
@@ -1693,7 +1716,7 @@ def _watchlist_item(code: str) -> dict:
         if not full:
             return base
         last = full[-1]
-        dash = compute_dashboard(full, code, market=cached_market)
+        dash = compute_dashboard(full, code, market=cached_market, compact=True)
         rq = dash.get("reversal_quality") or None
         # Compact form for the watchlist card — full check list lives on
         # the detail page.

@@ -48,8 +48,12 @@ from backtest.study import (  # noqa: E402
     DATA_DIR, HORIZONS, SIGNAL_DEFS,
     load_taiex, load_series,
     find_events, forward_return, forward_alpha, summarize,
+    _compute_lights,
 )
 from stock_web.app import _compute_rows, _market_for, MARKET_TWSE  # noqa: E402
+
+INST_IDX = 6  # step 7 (法人) in the steps array
+INST_BUCKETS = ("green", "non_green")
 
 OUT_PATH = DATA_DIR / "_summary_stats.json"
 
@@ -73,7 +77,14 @@ def main() -> None:
     # Per signal, accumulate per-horizon return + alpha lists across all
     # codes. Random baselines are pooled the same way.
     pooled: dict[str, dict[int, dict[str, list]]] = {}
+    # Conditional pools split by step 7 (法人) state at event time —
+    # OOS validation showed inst state materially shifts forward alpha
+    # (法人未確認 chip), so showing the conditional distribution lets
+    # the dashboard tell the user "given today's 法人 light, what did
+    # this same summary label deliver historically".
+    pooled_inst: dict[str, dict[str, dict[int, dict[str, list]]]] = {}
     events_count: dict[str, int] = {}
+    events_count_inst: dict[str, dict[str, int]] = {}
     summary_signals = [k for k, v in SIGNAL_DEFS.items() if v["type"] == "summary"]
 
     for code in codes:
@@ -93,7 +104,22 @@ def main() -> None:
             events_count[label] = events_count.get(label, 0) + len(events)
             if not events:
                 continue
+            # Bucket each event by step 7 light at event time.
+            events_by_inst: dict[str, list[int]] = {b: [] for b in INST_BUCKETS}
+            for i in events:
+                _, steps = _compute_lights(rows, i, code=code, market=market)
+                if not steps or len(steps) <= INST_IDX:
+                    continue
+                inst_light = steps[INST_IDX]["light"]
+                bucket = "green" if inst_light == "green" else "non_green"
+                events_by_inst[bucket].append(i)
+            ec_inst = events_count_inst.setdefault(label, {b: 0 for b in INST_BUCKETS})
+            for b in INST_BUCKETS:
+                ec_inst[b] += len(events_by_inst[b])
+
             buckets = pooled.setdefault(label, {})
+            inst_pool = pooled_inst.setdefault(
+                label, {b: {} for b in INST_BUCKETS})
             for h in HORIZONS:
                 bh = buckets.setdefault(h, {"ret": [], "alpha": [], "rand": []})
                 for i in events:
@@ -114,16 +140,29 @@ def main() -> None:
                         rr = forward_return(rows, j, h)
                         if rr is not None:
                             bh["rand"].append(rr)
+                # Per-inst-bucket pools (no random baseline — the
+                # unconditional rand_med is already shown; the conditional
+                # view is for comparing to the unconditional pooled stat,
+                # not to a re-sampled random).
+                for bucket, evs in events_by_inst.items():
+                    if not evs:
+                        continue
+                    bhi = inst_pool[bucket].setdefault(
+                        h, {"ret": [], "alpha": []})
+                    for i in evs:
+                        r = forward_return(rows, i, h)
+                        a = forward_alpha(rows, i, h)
+                        if r is not None:
+                            bhi["ret"].append(r)
+                        if a is not None:
+                            bhi["alpha"].append(a)
 
-    # Serialize stats per (label, horizon).
-    out_signals: dict[str, dict] = {}
-    for label, buckets in pooled.items():
+    def _serialize_horizons(buckets: dict, include_rand: bool = True) -> dict:
         per_horizon: dict[str, dict] = {}
         for h, bh in buckets.items():
             ret_s = summarize(bh["ret"])
             alpha_s = summarize(bh["alpha"])
-            rand_s = summarize(bh["rand"])
-            per_horizon[str(h)] = {
+            entry = {
                 "n": ret_s.get("n", 0),
                 "ret_med": ret_s.get("median"),
                 "ret_mean": ret_s.get("mean"),
@@ -131,12 +170,31 @@ def main() -> None:
                 "alpha_med": alpha_s.get("median"),
                 "alpha_mean": alpha_s.get("mean"),
                 "alpha_win": alpha_s.get("win_pct"),
-                "rand_med": rand_s.get("median"),
-                "rand_win": rand_s.get("win_pct"),
             }
+            if include_rand:
+                rand_s = summarize(bh.get("rand", []))
+                entry["rand_med"] = rand_s.get("median")
+                entry["rand_win"] = rand_s.get("win_pct")
+            per_horizon[str(h)] = entry
+        return per_horizon
+
+    # Serialize stats per (label, horizon).
+    out_signals: dict[str, dict] = {}
+    for label, buckets in pooled.items():
+        ec_inst = events_count_inst.get(label, {b: 0 for b in INST_BUCKETS})
         out_signals[label] = {
             "events_total": events_count.get(label, 0),
-            "horizons": per_horizon,
+            "horizons": _serialize_horizons(buckets, include_rand=True),
+            "by_inst": {
+                bucket: {
+                    "events_total": ec_inst.get(bucket, 0),
+                    "horizons": _serialize_horizons(
+                        pooled_inst.get(label, {}).get(bucket, {}),
+                        include_rand=False,
+                    ),
+                }
+                for bucket in INST_BUCKETS
+            },
         }
 
     out = {
