@@ -1893,7 +1893,8 @@ async function loadStock(code) {
       const steps = data.dashboard.steps || [];
       const instLight = (steps[6] && steps[6].light) || null;
       const alerts = data.dashboard.alerts || [];
-      loadBacktestStats(data.dashboard.summary.label, instLight, alerts, data.code);
+      const regime = data.dashboard.taiex_regime || null;
+      loadBacktestStats(data.dashboard.summary.label, instLight, alerts, data.code, regime);
     } else {
       const c = document.getElementById("backtestCard");
       if (c) c.hidden = true;
@@ -2429,7 +2430,7 @@ function _pickChipFromAlerts(alerts) {
   return null;
 }
 
-async function loadBacktestStats(label, instLight, alerts, code) {
+async function loadBacktestStats(label, instLight, alerts, code, regime) {
   const card = document.getElementById("backtestCard");
   if (!card) return;
   card.hidden = true;
@@ -2454,7 +2455,7 @@ async function loadBacktestStats(label, instLight, alerts, code) {
       renderBacktestPlaceholder();
       return;
     }
-    renderBacktestStats(picked.alert, d, code);
+    renderBacktestStats(picked.alert, d, code, regime);
   } catch (e) {
     renderBacktestPlaceholder();
   }
@@ -2473,7 +2474,7 @@ function renderBacktestPlaceholder() {
   card.hidden = false;
 }
 
-function renderBacktestStats(alert, d, code) {
+function renderBacktestStats(alert, d, code, regime) {
   const card = document.getElementById("backtestCard");
   const grid = document.getElementById("btGrid");
   const subtitle = document.getElementById("btSubtitle");
@@ -2482,25 +2483,34 @@ function renderBacktestStats(alert, d, code) {
 
   const horizons = ["5", "10", "20", "40"];
 
-  // Prefer per-stock track record when the current code is in the
-  // backtest universe AND has enough events for stability. The pool
-  // median hides 50-72% per-stock breadth — a real signal split that
-  // matters for the specific stock the user is looking at. Threshold 3
-  // because per-stock samples typically run 4-17 events on AVOID/LEAD
-  // and 1-7 on the reversal+綠 chips.
+  // Display priority:
+  //   1. Per-stock track record — most specific (this stock × this chip).
+  //   2. Regime-conditional pool — when stock isn't in backtest but
+  //      today's TAIEX regime is known and the bucket has enough events.
+  //      bear_regime_test showed LEAD inverts and AVOID strengthens in
+  //      bear, so the regime view materially shifts the read.
+  //   3. Unconditional pool — fallback.
   const MIN_PER_STOCK_N = 3;
+  const MIN_REGIME_N = 15;
   const perStock = (d.per_stock && code) ? d.per_stock[code] : null;
   const usePerStock = perStock && (perStock.events_total || 0) >= MIN_PER_STOCK_N;
-  const source = usePerStock ? perStock : d;
+  const regimeBucket = (regime && d.by_regime) ? d.by_regime[regime] : null;
+  const useRegime = !usePerStock && regimeBucket &&
+                    (regimeBucket.events_total || 0) >= MIN_REGIME_N;
+  const source = usePerStock ? perStock : (useRegime ? regimeBucket : d);
   const rows = horizons
     .map(h => ({ h, ...(source.horizons[h] || {}) }))
     .filter(r => r.n);
   if (rows.length === 0) { card.hidden = true; return; }
 
   const chipText = (alert.icon ? alert.icon + " " : "") + (alert.text || "");
+  const regimeLabel = regime === "bear" ? "跌市" : "多頭";
   if (usePerStock) {
     subtitle.textContent =
       `(${chipText} · 該檔 ${perStock.events_total} 次 · 全池 ${d.events_total} 次)`;
+  } else if (useRegime) {
+    subtitle.textContent =
+      `(${chipText} · 今日${regimeLabel}池 ${regimeBucket.events_total} 次 · 全池 ${d.events_total} 次)`;
   } else {
     subtitle.textContent = `(${chipText} · 全池 ${d.events_total || 0} 次)`;
   }
@@ -2517,10 +2527,11 @@ function renderBacktestStats(alert, d, code) {
   const cls = (v) => (v == null || isNaN(v)) ? "" :
     (v > 0.002 ? "pos" : v < -0.002 ? "neg" : "");
 
-  // When showing per-stock, add a "vs 全池" column so the user sees
-  // how this stock historically deviates from the pooled median —
-  // some stocks invert the signal (2454 AVOID is actually +5%).
-  const lastHeader = usePerStock ? "vs 全池" : "n";
+  // Last column is "vs 全池" (delta to unconditional) when we're
+  // showing a conditional view (per-stock OR regime). Plain "n" when
+  // the unconditional pool is the source.
+  const showDelta = usePerStock || useRegime;
+  const lastHeader = showDelta ? "vs 全池" : "n";
   const header = [
     `<span class="bt-th">期間</span>`,
     `<span class="bt-th">中位 alpha</span>`,
@@ -2529,7 +2540,7 @@ function renderBacktestStats(alert, d, code) {
   ];
   const body = rows.flatMap(r => {
     let lastCell;
-    if (usePerStock) {
+    if (showDelta) {
       const pool = (d.horizons || {})[r.h] || {};
       const delta = (r.alpha_med != null && pool.alpha_med != null)
         ? (r.alpha_med - pool.alpha_med) : null;
@@ -2545,9 +2556,16 @@ function renderBacktestStats(alert, d, code) {
     ];
   });
   grid.innerHTML = [...header, ...body].join("");
-  foot.textContent = usePerStock
-    ? "alpha 為該檔自身歷史命中 · vs 全池 = 該檔 − 30 檔池中位 · 觀察用"
-    : "alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 觀察用,非進場依據";
+  if (usePerStock) {
+    foot.textContent =
+      "alpha 為該檔自身歷史命中 · vs 全池 = 該檔 − 30 檔池中位 · 觀察用";
+  } else if (useRegime) {
+    foot.textContent =
+      `alpha 為今日${regimeLabel}池歷史命中 · vs 全池 = ${regimeLabel}池 − 全體中位 · 觀察用`;
+  } else {
+    foot.textContent =
+      "alpha = 該檔 − 同期間 TAIEX,扣除大盤漂移 · 觀察用,非進場依據";
+  }
   card.hidden = false;
 }
 

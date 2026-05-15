@@ -1605,6 +1605,7 @@ def compute_dashboard(full_rows: list[dict], code: str | None = None,
         "distance": distance,
         "history": history,
         "alerts": alerts,
+        "taiex_regime": taiex_regime,
     }
 
 

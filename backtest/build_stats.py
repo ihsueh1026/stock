@@ -53,7 +53,11 @@ from backtest.study import (  # noqa: E402
 from backtest.red_recovery import find_recovery_events  # noqa: E402
 from backtest.green_entry import find_entry_events  # noqa: E402
 from backtest.reversal_quality_study import find_exact_events  # noqa: E402
-from stock_web.app import _compute_rows, _market_for, MARKET_TWSE  # noqa: E402
+from stock_web.app import (  # noqa: E402
+    _compute_rows, _market_for, MARKET_TWSE,
+    TAIEX_BEAR_THRESH, TAIEX_LOOKBACK,
+)
+from datetime import datetime  # noqa: E402
 
 INST_IDX = 6  # step 7 (法人) in the steps array
 VOL_IDX = 3  # step 4 (量能) in the steps array
@@ -70,6 +74,29 @@ CHIP_KINDS = (
     "reversal_inst_confirm_4",
     "reversal_inst_confirm_5",
 )
+
+REGIME_BUCKETS = ("bull", "bear")
+
+
+def _classify_taiex_regimes(taiex: dict) -> dict:
+    """{date_obj: 'bull'|'bear'} from trailing-60d TAIEX drawdown.
+
+    Mirrors `_taiex_regime_today` in stock_web.app so the chip's
+    "given today is bear" historical pool aligns with what the live
+    regime classifier would call today.
+    """
+    sorted_dates = sorted(taiex.keys())
+    sorted_vals = [taiex[d] for d in sorted_dates]
+    out = {}
+    for i, d in enumerate(sorted_dates):
+        lo = max(0, i - TAIEX_LOOKBACK + 1)
+        peak = max(sorted_vals[lo: i + 1])
+        if peak <= 0:
+            out[d] = "bull"
+            continue
+        dd = (sorted_vals[i] - peak) / peak
+        out[d] = "bear" if dd <= -TAIEX_BEAR_THRESH else "bull"
+    return out
 
 
 def _chip_events_for_code(rows: list[dict], code: str, market: str
@@ -153,6 +180,15 @@ def main() -> None:
     # mean hides real heterogeneity).
     chip_pools_per_code: dict[str, dict[str, dict[int, dict[str, list]]]] = {}
     chip_events_count_per_code: dict[str, dict[str, int]] = {}
+    # By-regime chip pools — chip_kind -> regime -> horizon -> ret/alpha.
+    # bear_regime_test showed LEAD inverts in bear, so when today's
+    # TAIEX is bear the user wants to see the bear-conditional history
+    # not the bull-dominated unconditional pool.
+    chip_pools_by_regime: dict[str, dict[str, dict[int, dict[str, list]]]] = {}
+    chip_events_count_by_regime: dict[str, dict[str, int]] = {
+        k: {b: 0 for b in REGIME_BUCKETS} for k in CHIP_KINDS
+    }
+    regimes = _classify_taiex_regimes(taiex)
     summary_signals = [k for k, v in SIGNAL_DEFS.items() if v["type"] == "summary"]
 
     for code in codes:
@@ -226,7 +262,8 @@ def main() -> None:
                             bhi["alpha"].append(a)
 
         # Per-code chip events — computed once per code; same indices
-        # feed both the global pool and this stock's own per-code pool.
+        # feed the global pool, the per-code pool, and the per-regime
+        # pool.
         chip_evts = _chip_events_for_code(rows, code, market)
         for chip_key, idxs in chip_evts.items():
             chip_events_count[chip_key] = (
@@ -237,18 +274,37 @@ def main() -> None:
             buckets = chip_pools.setdefault(chip_key, {})
             code_buckets = chip_pools_per_code.setdefault(
                 chip_key, {}).setdefault(code, {})
+            regime_pool = chip_pools_by_regime.setdefault(
+                chip_key, {b: {} for b in REGIME_BUCKETS})
+            # Pre-resolve each event's regime so we don't redo per-horizon.
+            idx_regime = {}
+            for i in idxs:
+                d = rows[i]["date"]
+                if isinstance(d, str):
+                    d = datetime.fromisoformat(d).date()
+                r = regimes.get(d, "bull")
+                idx_regime[i] = r
+                chip_events_count_by_regime[chip_key][r] += 1
             for h in HORIZONS:
                 bh = buckets.setdefault(h, {"ret": [], "alpha": []})
                 bh_c = code_buckets.setdefault(h, {"ret": [], "alpha": []})
+                bh_r = {
+                    b: regime_pool[b].setdefault(
+                        h, {"ret": [], "alpha": []})
+                    for b in REGIME_BUCKETS
+                }
                 for i in idxs:
                     r = forward_return(rows, i, h)
                     a = forward_alpha(rows, i, h)
+                    regime = idx_regime[i]
                     if r is not None:
                         bh["ret"].append(r)
                         bh_c["ret"].append(r)
+                        bh_r[regime]["ret"].append(r)
                     if a is not None:
                         bh["alpha"].append(a)
                         bh_c["alpha"].append(a)
+                        bh_r[regime]["alpha"].append(a)
 
     def _serialize_horizons(buckets: dict, include_rand: bool = True) -> dict:
         per_horizon: dict[str, dict] = {}
@@ -302,10 +358,21 @@ def main() -> None:
                 "horizons": _serialize_horizons(code_buckets,
                                                 include_rand=False),
             }
+        regime_pools = chip_pools_by_regime.get(chip_key, {})
+        regime_counts = chip_events_count_by_regime.get(chip_key, {})
+        by_regime = {
+            r: {
+                "events_total": regime_counts.get(r, 0),
+                "horizons": _serialize_horizons(
+                    regime_pools.get(r, {}), include_rand=False),
+            }
+            for r in REGIME_BUCKETS
+        }
         out_chips[chip_key] = {
             "events_total": chip_events_count.get(chip_key, 0),
             "horizons": _serialize_horizons(buckets, include_rand=False),
             "per_stock": per_stock,
+            "by_regime": by_regime,
         }
 
     out = {
