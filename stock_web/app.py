@@ -1477,7 +1477,15 @@ def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):
     Prefetches the T86 dates needed by step 8 so the institutional light
     is populated for every history row, not just where cache happened to
     exist. T86 is whole-market data shared across stocks, so the cost is
-    paid once per day across the whole watchlist."""
+    paid once per day across the whole watchlist.
+
+    Each row also includes `chip_keys`: list of stat_key-bearing chips
+    that would have emitted on that bar. AVOID is excluded — its
+    trigger requires a separate window-walk over prior days that we
+    don't want to replicate inside the 15-day strip. The
+    quality-based chips (REV-4/5, TOP-RED/YEL) and BEAR-DIV are
+    pure window-state functions and cheap to recompute here.
+    """
     if not full_rows:
         return []
     start = max(1, len(full_rows) - days)
@@ -1487,6 +1495,9 @@ def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):
         if date_iso:
             _fetch_t86(date_iso, market)
     out = []
+    prev_rev_score = None
+    prev_top_score = None
+    prev_div_kind = None
     for end_idx in range(start, len(full_rows)):
         sub = full_rows[: end_idx + 1]
         window = sub[-20:]
@@ -1494,11 +1505,36 @@ def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):
             continue
         steps = _compute_steps(window, code, market=market, t86_cached_only=True)
         summary = _summary(steps)
+        chip_keys: list[str] = []
+        INST_STEP = 6  # step 7 法人 index in steps[]
+        if len(window) >= 20 and steps and len(steps) > INST_STEP:
+            inst_light = steps[INST_STEP]["light"]
+            rq = _reversal_quality(window)
+            tq = _topping_quality(window)
+            div = _divergence(window) or {}
+            # Reversal chip — exact-score first-cross at 4 or 5 with 法人=綠
+            if rq and rq.get("score") in (4, 5) and rq["score"] != prev_rev_score:
+                if inst_light == "green":
+                    chip_keys.append(f"reversal_inst_confirm_{rq['score']}")
+            prev_rev_score = rq.get("score") if rq else None
+            # Topping chip — exact-score 5 first-cross with 法人=red/yellow
+            if tq and tq.get("score") == 5 and prev_top_score != 5:
+                if inst_light == "red":
+                    chip_keys.append("topping_inst_red_5")
+                elif inst_light == "yellow":
+                    chip_keys.append("topping_inst_yellow_5")
+            prev_top_score = tq.get("score") if tq else None
+            # Bearish divergence first-cross
+            kind = div.get("kind")
+            if kind == "bearish" and prev_div_kind != "bearish":
+                chip_keys.append("bearish_divergence")
+            prev_div_kind = kind
         out.append({
             "date": window[-1]["date"],
             "lights": [s["light"] for s in steps],
             "overall": summary["light"],
             "overall_label": summary["label"],
+            "chip_keys": chip_keys,
         })
     return out
 
