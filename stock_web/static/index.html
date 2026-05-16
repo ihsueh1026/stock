@@ -1283,33 +1283,32 @@
         </div>
         <div class="backtest-card" id="backtestCard" hidden>
           <div class="bt-head">
-            <span class="bt-title">歷史此狀態後的報酬 <span class="bt-meta" id="btSubtitle"></span></span>
+            <span class="bt-title">Chip 歷史命中分布 <span class="bt-meta" id="btSubtitle"></span></span>
           </div>
           <div class="bt-grid" id="btGrid"></div>
           <div class="bt-foot" id="btFoot"></div>
         </div>
         <details class="overall-rules">
-          <summary>歷史狀態規則</summary>
+          <summary>Chip 觸發規則</summary>
           <p class="rules-note" style="margin-top: 8px;">
-            樣本來自 50 檔台股科技 2021-04 ~ 2026-05 共 5 年。任一 chip 觸發時,
-            上方 card 顯示該 chip 歷史命中分布。中位 alpha = 該檔報酬 − 同期間 TAIEX。
+            品質面板 ≥2★ 是觀察起點,當 5★ 同時搭到對應的法人狀態時,升級為 chip 觸發,
+            上方「Chip 歷史命中分布」卡片即時顯示該檔自身命中(或回測池中位)。
+            樣本:50 檔台股科技 2021-04 ~ 2026-05。
           </p>
-          <ol>
-            <li><b>⚠ 法人未確認</b> (AVOID):紅燈深陷期退出但法人仍紅,或綠燈進場但法人量能皆非綠。歷史 40d alpha -1.9% / 勝率 44%,跌市加深至 -3.2%。</li>
-            <li><b>⚠ 高點 ★★★★★+法人未確認</b>:高點品質 5★ + 法人紅。短期 5d alpha -1.0% / 勝率 39%,訊號壽命約 5 日(過 20d 被多頭吃回)。Per-stock 3:1 負向 — 最乾淨的高點 chip。</li>
-            <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質分數 4 + 法人綠。歷史 40d alpha +1.7% / 勝率 55%,跌市表現相近 (+1.5%) — 最穩定的反轉訊號。</li>
-            <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質分數 5 + 法人綠。歷史 40d alpha +1.0% / 勝率 54%,跌市裡躍升至 +2.8% / 61%。</li>
-            <li><b>📈 強勢延伸 ★★★★★+法人觀望</b>:高點品質 5★ + 法人黃(機構未跟拋)。20d alpha +2.2% / 勝率 58%(n=270),反直覺多頭續攻訊號 — 過熱但機構觀望,通常續攻而非反轉。</li>
-            <li><b>⚠ 頂背離</b> (per-stock):價新高但 RSI6 跟不上。Pool 中性 (+0.1%/50%),但個股差異極大(-16% ~ +13% @ 40d)。chip 卡片優先顯示該檔自身命中。</li>
-          </ol>
-          <p class="rules-note">
-            顯示優先順序:<br>
-            1. <b>該檔自身歷史</b> (≥3 次) — 在 50 檔回測池內的股票<br>
-            2. <b>今日 TAIEX regime 條件池</b> (≥15 次) — 池外股票<br>
-            3. <b>全池中位</b> — 兜底<br>
-            <br>
-            <b>品質分數面板</b>:在 chip 觸發之前,反轉品質與高點品質的 5 條件檢核會在 ≥2★ 時自動顯示,讓你看到配置正在 build。chip 在 5★ + 法人到位/未確認 時才觸發。<br>
-            原 LEAD (法人提前) 與 3★+綠 chip 已移除:50 檔池上邊際接近零。
+          <p class="rules-note" style="margin-top: 8px;"><b>🔴 空頭/警示</b></p>
+          <ul>
+            <li><b>⚠ 法人未確認 (AVOID)</b>:紅燈延伸但法人仍紅 / 綠燈進場但法人量能皆未到位 · 40d 期限</li>
+            <li><b>⚠ 高點 ★★★★★+法人未確認</b>:高點品質 5★ + 法人=紅 · 5d 期限(過後被多頭吃回)</li>
+            <li><b>⚠ 頂背離 (per-stock)</b>:價新高,RSI6 不跟 · 個股而定(10d 為強處)</li>
+          </ul>
+          <p class="rules-note" style="margin-top: 8px;"><b>🟢 多頭/續攻</b></p>
+          <ul>
+            <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質 4★ + 法人=綠 · 40d 期限(最穩)</li>
+            <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質 5★ + 法人=綠 · 40d 期限(跌市更銳)</li>
+            <li><b>📈 強勢延伸 ★★★★★+法人觀望</b>:高點品質 5★ + 法人=黃 · 20d 期限(機構未跟拋常續攻)</li>
+          </ul>
+          <p class="rules-note" style="margin-top: 8px;">
+            原 LEAD (法人提前) 與 反轉 3★+綠 chip 已移除:50 檔池上邊際接近零。
           </p>
         </details>
         <details class="overall-rules">
