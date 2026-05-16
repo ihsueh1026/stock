@@ -37,6 +37,7 @@ from stock_web import (  # noqa: E402
     eps_history_fetcher,
     dividend_fetcher,
     industry_pe_fetcher,
+    forward_log,
 )
 
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
@@ -2074,7 +2075,8 @@ def _on_startup() -> None:
     (1) purge stale dated caches, (2) warm the company-info cache so the
     first watchlist load doesn't pay the ~1MB OpenAPI fetch, (3) pre-warm
     the today_chips scan (15-45s for a 28-stock watchlist) so the first
-    page open finds it instantly cached."""
+    page open finds it instantly cached, (4) sweep the forward log to
+    fill any newly-matured alpha records since the last server run."""
     def _warm():
         try:
             _purge_old_caches()
@@ -2088,7 +2090,27 @@ def _on_startup() -> None:
             watchlist_chips()
         except Exception:
             pass
+        # Forward-log: fill any horizons that matured while the
+        # server was offline. Idempotent — a no-op when nothing has
+        # matured since last sweep.
+        try:
+            forward_log.fill_matured_records(_load_rows_from_cache)
+        except Exception:
+            pass
     threading.Thread(target=_warm, daemon=True).start()
+    # Cron worker (Q2 = lazy + cron). Lazy fill handles the case
+    # where `/api/forward_log/summary` is read; this background
+    # thread handles the case where no one reads but the server
+    # keeps running. 6 hours is a balance between latency and load.
+    def _forward_log_cron():
+        import time
+        while True:
+            time.sleep(6 * 3600)
+            try:
+                forward_log.fill_matured_records(_load_rows_from_cache)
+            except Exception:
+                pass
+    threading.Thread(target=_forward_log_cron, daemon=True).start()
 
 
 @app.get("/api/stock/{code}")
@@ -2248,6 +2270,49 @@ def get_backtest_stats(label: Optional[str] = None,
     }
 
 
+def _load_rows_from_cache(code: str) -> Optional[list[dict]]:
+    """Helper passed to `forward_log.fill_matured_records` — reads
+    the most recent cached price series for a stock, or returns None
+    when no cache exists. Used by the lazy + cron fill paths.
+    """
+    cache = _stock_cache(code)
+    try:
+        if cache.exists():
+            with cache.open() as f:
+                payload = json.load(f)
+            return payload.get("rows") or None
+        # Fall back: most recent cache file for this code within the
+        # 7-day retention window (covers weekends / yesterday-only
+        # cache when today's hasn't been generated yet).
+        recent = sorted(CACHE_DIR.glob(f"{code}_*.json"))
+        if not recent:
+            return None
+        with recent[-1].open() as f:
+            payload = json.load(f)
+        return payload.get("rows") or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@app.get("/api/forward_log/summary")
+def get_forward_log_summary():
+    """Forward-looking validation summary: per-chip pool prediction
+    vs actual OOS delivery, accumulated since the log started.
+
+    Triggers a `fill_matured_records` sweep first (lazy fill) so the
+    response always reflects the latest matured horizons. The cron
+    worker (see `_forward_log_worker`) does the same on a 6-hour
+    schedule for long-quiet servers."""
+    try:
+        forward_log.fill_matured_records(_load_rows_from_cache)
+    except Exception:  # noqa: BLE001
+        # Non-fatal — summary should still serve even if a single
+        # stock's cache is corrupted.
+        pass
+    pool_stats = _load_backtest_stats()
+    return forward_log.summarize(pool_stats)
+
+
 @app.get("/api/industry_pe/{code}")
 def get_industry_pe(code: str, per: Optional[float] = None):
     """Return industry-median P/E for the stock's industry bucket.
@@ -2403,10 +2468,20 @@ def watchlist_refresh(code: str):
     return {"ok": True, "item": _watchlist_item(code)}
 
 
-def _scan_chip_alerts_for_code(code: str) -> list[dict] | None:
-    """Run full compute_dashboard on a cached stock and return only the
-    stat_key-bearing alerts (the chips we display historical stats for).
-    Returns None when the stock has no cache or no rows."""
+def _scan_chip_alerts_for_code(code: str) -> dict | None:
+    """Run full compute_dashboard on a cached stock and return:
+      - `alerts`: list of stat_key-bearing chip alerts (for the
+        existing today_chips API consumer)
+      - `emit_records`: list of forward-log emission records ready
+        to be appended (one per stat_key chip firing today)
+      - `prev_trading_day`: this stock's prior trading day (for the
+        first-cross dedup check inside forward_log.log_emissions)
+
+    Returns None when the stock has no cache or no rows. The combined
+    return shape lets the watchlist_chips endpoint do one batch
+    forward-log capture after all scans complete, rather than each
+    scan racing on the log file.
+    """
     try:
         cache = _stock_cache(code)
         if not cache.exists():
@@ -2420,20 +2495,47 @@ def _scan_chip_alerts_for_code(code: str) -> list[dict] | None:
         info = _company_info(code)
         short_name = info.get("short_name") or code
         dash = compute_dashboard(rows, code, market=market)
-        out = []
+        alerts_out: list[dict] = []
+        emit_records: list[dict] = []
+        last = rows[-1]
+        as_of = last.get("date")
+        close_at_emit = last.get("close")
+        taiex_at_emit = last.get("taiex")
+        steps = dash.get("steps") or []
+        inst_light = steps[6]["light"] if len(steps) > 6 else None
+        regime = dash.get("taiex_regime")
         for a in dash.get("alerts") or []:
-            if not a.get("stat_key"):
+            sk = a.get("stat_key")
+            if not sk:
                 continue
-            out.append({
+            alerts_out.append({
                 "code": code,
                 "short_name": short_name,
                 "kind": a.get("kind"),
-                "stat_key": a.get("stat_key"),
+                "stat_key": sk,
                 "icon": a.get("icon", ""),
                 "text": a.get("text", ""),
                 "tone": a.get("tone", "info"),
             })
-        return out
+            # Build the forward-log record while we have the data
+            # in scope. The log layer applies first-cross dedup
+            # against the previous trading day below.
+            if as_of and close_at_emit is not None and taiex_at_emit is not None:
+                emit_records.append({
+                    "emitted_at": as_of,
+                    "code": code,
+                    "stat_key": sk,
+                    "inst_light": inst_light,
+                    "regime": regime,
+                    "close_at_emit": close_at_emit,
+                    "taiex_at_emit": taiex_at_emit,
+                })
+        prev_trading_day = rows[-2]["date"] if len(rows) >= 2 else None
+        return {
+            "alerts": alerts_out,
+            "emit_records": emit_records,
+            "prev_trading_day": prev_trading_day,
+        }
     except Exception:  # noqa: BLE001
         return None
 
@@ -2482,12 +2584,30 @@ def watchlist_chips():
             _today_chips_cache["date"] = today
             _today_chips_cache["data"] = result
             return {**result, "cached": False}
+        # Collect alerts (for the today_chips response) + emission
+        # records (for forward_log). The forward log call happens
+        # AFTER the scan completes so a single batch handles dedup
+        # against the previous trading day for all stocks at once.
+        all_emit_records: list[dict] = []
+        prev_day_per_code: dict[str, str] = {}
         with ThreadPoolExecutor(max_workers=4) as ex:
-            for results in ex.map(_scan_chip_alerts_for_code, codes):
-                if not results:
+            for code, result in zip(codes, ex.map(_scan_chip_alerts_for_code, codes)):
+                if not result:
                     continue
-                for r in results:
-                    fires.setdefault(r["stat_key"], []).append(r)
+                for a in result.get("alerts") or []:
+                    fires.setdefault(a["stat_key"], []).append(a)
+                for rec in result.get("emit_records") or []:
+                    all_emit_records.append(rec)
+                pd = result.get("prev_trading_day")
+                if pd:
+                    prev_day_per_code[code] = pd
+        # Forward-log capture: first-cross dedup, then append.
+        # Errors here are non-fatal — chip display must keep working
+        # even if the log file is unwritable.
+        try:
+            forward_log.log_emissions(all_emit_records, prev_day_per_code)
+        except Exception:  # noqa: BLE001
+            pass
         total = sum(len(v) for v in fires.values())
         result = {"chips": fires, "total": total, "scanned": len(codes)}
         _today_chips_cache["date"] = today

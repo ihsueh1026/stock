@@ -826,6 +826,26 @@
     margin: 4px 0 4px 18px; padding: 0; line-height: 1.7;
   }
   .hero-overall .overall-rules ul li { margin-bottom: 2px; font-size: 12px; }
+  /* Forward-log calibration table inside 使用說明 collapsible.
+     Compact — narrow columns, tabular numerics, monospace alignment
+     so the predicted/actual/delta columns scan visually as a triple. */
+  .hero-overall .overall-rules .fwd-log-table {
+    margin: 6px 0; border-collapse: collapse;
+    font-size: 11.5px; width: 100%;
+  }
+  .hero-overall .overall-rules .fwd-log-table th,
+  .hero-overall .overall-rules .fwd-log-table td {
+    padding: 4px 8px; text-align: left;
+    border-bottom: 1px dashed var(--border, #ddd);
+  }
+  .hero-overall .overall-rules .fwd-log-table th {
+    color: var(--text-faint); font-weight: 500; font-size: 11px;
+  }
+  .hero-overall .overall-rules .fwd-log-table .fwd-num {
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .hero-overall .overall-rules .fwd-log-table .pos { color: var(--green); }
+  .hero-overall .overall-rules .fwd-log-table .neg { color: var(--red); }
 
   .hero-price { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
   .hero-price .row1 { display: flex; align-items: baseline; gap: 12px; }
@@ -1400,6 +1420,11 @@
           <p class="rules-note">
             原 LEAD (法人提前) 與 反轉 3★+綠 chip 已移除:50 檔池上邊際接近零。
           </p>
+
+          <p class="rules-section"><b>OOS 累積驗證 (forward log)</b></p>
+          <div id="fwdLogSummary">
+            <p class="rules-note">載入中...</p>
+          </div>
         </details>
       </div>
       <div class="card hero-price">
@@ -1603,6 +1628,11 @@ function showWatchlist() {
 function showDetail(code) {
   document.getElementById("watchlistView").hidden = true;
   document.getElementById("detailView").hidden = false;
+  // Load the forward log summary alongside the detail page —
+  // shows inside the 使用說明 collapsible at the bottom. Cheap
+  // call (one cached JSON sweep), safe to fire on every detail
+  // open so the user sees fresh numbers.
+  loadForwardLog();
   const crumb = document.getElementById("crumb");
   crumb.hidden = false;
   crumb.textContent = code;
@@ -1707,6 +1737,101 @@ async function loadTodayChips() {
   } catch (e) {
     panel.hidden = true;
   }
+}
+
+// Forward log: pull the OOS validation summary and render the
+// per-chip "predicted vs actual" table inside the 使用說明
+// collapsible. Auto-hides rows where n_matured < MIN_FWD_N for
+// the chip's headline horizon — early in the log's life all
+// rows are noise. The unconditional total is always shown so
+// the user sees the log is alive.
+const MIN_FWD_N = 5;
+const FWD_HEADLINE_H = {
+  inst_not_confirmed: "40",
+  reversal_inst_confirm_4: "40",
+  reversal_inst_confirm_5: "40",
+  topping_inst_red_5: "5",
+  topping_inst_yellow_5: "20",
+  bearish_divergence: "10",
+};
+
+async function loadForwardLog() {
+  const host = document.getElementById("fwdLogSummary");
+  if (!host) return;
+  try {
+    const res = await fetch("/api/forward_log/summary");
+    if (!res.ok) {
+      host.innerHTML = `<p class="rules-note">尚未啟用或讀取失敗</p>`;
+      return;
+    }
+    const d = await res.json();
+    renderForwardLog(d);
+  } catch (e) {
+    host.innerHTML = `<p class="rules-note">尚未啟用或讀取失敗</p>`;
+  }
+}
+
+function renderForwardLog(d) {
+  const host = document.getElementById("fwdLogSummary");
+  if (!host) return;
+  const total = d.total_emissions || 0;
+  const since = d.first_emission ? ` · 自 ${d.first_emission}` : "";
+  if (total === 0) {
+    host.innerHTML =
+      `<p class="rules-note">尚無 emission 紀錄。系統會在你下次掃 watchlist 時開始捕捉 chip 觸發,5/10/20/40 天後回填實際 alpha 對照 pool 預測。</p>`;
+    return;
+  }
+  const byChip = d.by_chip || {};
+  // Build per-chip rows with the chip's headline horizon
+  const rows = [];
+  const waiting = [];
+  for (const [sk, info] of Object.entries(byChip)) {
+    const headlineH = FWD_HEADLINE_H[sk] || "40";
+    const h = (info.horizons || {})[headlineH] || {};
+    const n = h.n_matured || 0;
+    const display = CHIP_DISPLAY[sk] || { label: sk };
+    if (n < MIN_FWD_N) {
+      waiting.push(`${display.label} ${n}/${MIN_FWD_N}@${headlineH}d`);
+      continue;
+    }
+    const fmtPct = v => v == null ? "—" : ((v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%");
+    const fmtSign = v => v == null ? ""
+      : v > 0.005 ? "outperforms"
+      : v < -0.005 ? "underperforms"
+      : "matches";
+    const delta = h.delta;
+    const dColor = delta == null ? ""
+      : delta > 0.005 ? "pos"
+      : delta < -0.005 ? "neg" : "";
+    rows.push(`
+      <tr>
+        <td>${escapeHtml(display.label)}</td>
+        <td class="fwd-num">${info.count}</td>
+        <td class="fwd-num">${n}@${headlineH}d</td>
+        <td class="fwd-num">${fmtPct(h.pool_alpha)}</td>
+        <td class="fwd-num ${dColor}">${fmtPct(h.actual_alpha)}</td>
+        <td class="fwd-num ${dColor}">${fmtPct(delta)}</td>
+      </tr>
+    `);
+  }
+  let html = `<p class="rules-note">累積 ${total} 筆${since}。對照「pool 預測」(回測中位 alpha) vs 「實際」(log 內 matured 後實測中位)。</p>`;
+  if (rows.length > 0) {
+    html += `
+      <table class="fwd-log-table">
+        <thead>
+          <tr>
+            <th>chip</th><th>累計</th><th>已成熟</th>
+            <th>pool 預測</th><th>實際命中</th><th>delta</th>
+          </tr>
+        </thead>
+        <tbody>${rows.join("")}</tbody>
+      </table>
+    `;
+  }
+  if (waiting.length > 0) {
+    html += `<p class="rules-note">樣本累積中(需 ≥${MIN_FWD_N} 筆才顯示):${waiting.join(" · ")}</p>`;
+  }
+  host.innerHTML = html;
 }
 
 // Per-watchlist-card chip data, set by renderTodayChips. Maps
