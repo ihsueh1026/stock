@@ -1540,10 +1540,20 @@ def _reversal_quality(window: list[dict]) -> dict | None:
         "passed": near_low_pct <= 2.0,
         "detail": f"距 20 日低 +{near_low_pct:.1f}%",
     })
-    # 2. 前期跌深 ≥5%
+    # 2. 前期跌幅 ≥7.5%
+    # Tightened from ≥5% on 2026-05. Pass rate at ≥5% was 51.6% —
+    # essentially "any stock that pulled back at all". Threshold sweep
+    # showed ≥7.5% is the sweet spot: 4★+綠 +0.7pp (+1.93→+2.61%),
+    # 5★+綠 +0.7pp (+1.64→+2.30%) at 40d, both with minimal sample
+    # loss. ≥10% degrades 4★ (over-filters), ≥15% degrades 4★ further
+    # while 5★ keeps strengthening (asymmetric sweet spot — kept
+    # symmetric here to avoid splitting the score into score-specific
+    # rules). Note this isn't symmetric with topping's ≥15% runup
+    # because reversal's check #1 (≤2% from low) is itself more
+    # restrictive than topping's check #1 in a bull universe.
     checks.append({
-        "name": "前期跌幅 ≥5%",
-        "passed": drawdown_pct <= -5.0,
+        "name": "前期跌幅 ≥7.5%",
+        "passed": drawdown_pct <= -7.5,
         "detail": f"DD20={drawdown_pct:+.1f}%",
     })
     # 3. K < 20 (KD 超賣)

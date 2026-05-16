@@ -688,10 +688,19 @@
     color: #ff9d99;
   }
   .alert-chip .al-icon { font-size: 13px; }
-  .hero-overall .reversal-quality {
+  /* Shared border/padding lives on the outer wrapper so reversal +
+     topping panels stack cleanly without double-bordering when both
+     fire (rare but possible). Inner panels just space themselves. */
+  .hero-overall .quality-panels {
     margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--border-soft);
+  }
+  .hero-overall .reversal-quality {
     font-size: 12.5px; color: var(--text-muted);
+  }
+  .hero-overall .quality-panels > .reversal-quality + .topping-quality:not([hidden]) {
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed var(--border-soft);
   }
   .hero-overall .reversal-quality .rq-head {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -718,12 +727,9 @@
     .hero-overall .reversal-quality .rq-checks { grid-template-columns: 1fr; }
   }
   /* topping-quality reuses the same .rq-* inner structure so it
-     inherits the layout. We re-declare just the layout container and
-     give the stars a distinct warm-amber colour so the user can
-     visually tell which panel is firing (反轉低點 vs 高點). */
+     inherits the layout. Star colour is warm-amber to distinguish
+     visually from reversal's gold. */
   .hero-overall .topping-quality {
-    margin-top: 10px; padding-top: 10px;
-    border-top: 1px solid var(--border-soft);
     font-size: 12.5px; color: var(--text-muted);
   }
   .hero-overall .topping-quality .rq-head {
@@ -767,6 +773,18 @@
     border-top: 1px dashed var(--border, #ddd);
     font-size: 11.5px; line-height: 1.55;
   }
+  /* Section header within the unified 使用說明 collapsible —
+     visually separates 燈號判定 vs Chip 觸發 sub-blocks without
+     forcing two nested <details>. */
+  .hero-overall .overall-rules .rules-section {
+    margin: 14px 0 4px 0; padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+    color: var(--text); font-size: 13px;
+  }
+  .hero-overall .overall-rules ul {
+    margin: 4px 0 4px 18px; padding: 0; line-height: 1.7;
+  }
+  .hero-overall .overall-rules ul li { margin-bottom: 2px; font-size: 12px; }
 
   .hero-price { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
   .hero-price .row1 { display: flex; align-items: baseline; gap: 12px; }
@@ -1265,21 +1283,23 @@
           <span class="al-label">提醒</span>
           <span id="alertsStrip"></span>
         </div>
-        <div class="reversal-quality" id="reversalQuality" hidden>
-          <div class="rq-head">
-            <span class="rq-stars" id="rqStars"></span>
-            <span class="rq-desc" id="rqDesc"></span>
-            <span class="rq-note" id="rqNote"></span>
+        <div class="quality-panels" id="qualityPanels" hidden>
+          <div class="reversal-quality" id="reversalQuality" hidden>
+            <div class="rq-head">
+              <span class="rq-stars" id="rqStars"></span>
+              <span class="rq-desc" id="rqDesc"></span>
+              <span class="rq-note" id="rqNote"></span>
+            </div>
+            <ul class="rq-checks" id="rqChecks"></ul>
           </div>
-          <ul class="rq-checks" id="rqChecks"></ul>
-        </div>
-        <div class="topping-quality" id="toppingQuality" hidden>
-          <div class="rq-head">
-            <span class="rq-stars" id="tqStars"></span>
-            <span class="rq-desc" id="tqDesc"></span>
-            <span class="rq-note" id="tqNote"></span>
+          <div class="topping-quality" id="toppingQuality" hidden>
+            <div class="rq-head">
+              <span class="rq-stars" id="tqStars"></span>
+              <span class="rq-desc" id="tqDesc"></span>
+              <span class="rq-note" id="tqNote"></span>
+            </div>
+            <ul class="rq-checks" id="tqChecks"></ul>
           </div>
-          <ul class="rq-checks" id="tqChecks"></ul>
         </div>
         <div class="backtest-card" id="backtestCard" hidden>
           <div class="bt-head">
@@ -1289,35 +1309,14 @@
           <div class="bt-foot" id="btFoot"></div>
         </div>
         <details class="overall-rules">
-          <summary>Chip 觸發規則</summary>
-          <p class="rules-note" style="margin-top: 8px;">
-            品質面板 ≥2★ 是觀察起點,當 5★ 同時搭到對應的法人狀態時,升級為 chip 觸發,
-            上方「Chip 歷史命中分布」卡片即時顯示該檔自身命中(或回測池中位)。
-            樣本:50 檔台股科技 2021-04 ~ 2026-05。
-          </p>
-          <p class="rules-note" style="margin-top: 8px;"><b>🔴 空頭/警示</b></p>
-          <ul>
-            <li><b>⚠ 法人未確認 (AVOID)</b>:紅燈延伸但法人仍紅 / 綠燈進場但法人量能皆未到位 · 40d 期限</li>
-            <li><b>⚠ 高點 ★★★★★+法人未確認</b>:高點品質 5★ + 法人=紅 · 5d 期限(過後被多頭吃回)</li>
-            <li><b>⚠ 頂背離 (per-stock)</b>:價新高,RSI6 不跟 · 個股而定(10d 為強處)</li>
-          </ul>
-          <p class="rules-note" style="margin-top: 8px;"><b>🟢 多頭/續攻</b></p>
-          <ul>
-            <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質 4★ + 法人=綠 · 40d 期限(最穩)</li>
-            <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質 5★ + 法人=綠 · 40d 期限(跌市更銳)</li>
-            <li><b>📈 強勢延伸 ★★★★★+法人觀望</b>:高點品質 5★ + 法人=黃 · 20d 期限(機構未跟拋常續攻)</li>
-          </ul>
-          <p class="rules-note" style="margin-top: 8px;">
-            原 LEAD (法人提前) 與 反轉 3★+綠 chip 已移除:50 檔池上邊際接近零。
-          </p>
-        </details>
-        <details class="overall-rules">
-          <summary>判定規則</summary>
+          <summary>使用說明</summary>
           <p class="rules-note" style="margin-top: 8px;">
             <b>本儀表板為市況狀態描述,不是進出場機械訊號</b>。
             5 年回測顯示這些燈號對未來報酬無顯著預測力,標籤僅描述「目前處於什麼市況」,
             實際進出場仍需個人判斷與風險控管。
           </p>
+
+          <p class="rules-section"><b>燈號判定</b></p>
           <ol>
             <li><b>🟢 多頭擴張</b>:Step 1 綠 + Step 1~4 全綠 + Step 6 非紅 + Step 7 非紅</li>
             <li><b>🟢 多頭發展</b>:Step 1 綠 + Step 1~4 ≥3 綠 + Step 6 非紅 + Step 7 非紅</li>
@@ -1327,10 +1326,32 @@
             <li><b>🟡 盤整中</b>:其餘情況</li>
           </ol>
           <p class="rules-note">
-            Step 1 大盤為強制閘門,未綠則最高僅黃燈。<br>
-            Step 6 出場警示為一票否決,紅燈直接覆蓋多頭分數。<br>
-            Step 7 法人認養為軟否決,紅燈不會直接觸發紅,但會擋住「多頭擴張/發展」升級。<br>
+            Step 1 大盤為強制閘門,未綠則最高僅黃燈。
+            Step 6 出場警示為一票否決,紅燈直接覆蓋多頭分數。
+            Step 7 法人認養為軟否決,紅燈不會直接觸發紅,但會擋住「多頭擴張/發展」升級。
             Step 5 持有不參與升級或單獨否決,但其紅燈會計入「紅燈 ≥2 → 訊號分歧」總數。
+          </p>
+
+          <p class="rules-section"><b>Chip 觸發 + 歷史命中</b></p>
+          <p class="rules-note">
+            品質面板 ≥2★ 是觀察起點,當 5★ 同時搭到對應的法人狀態時,升級為 chip 觸發,
+            上方「Chip 歷史命中分布」卡片即時顯示該檔自身命中(或回測池中位)。
+            樣本:50 檔台股科技 2021-04 ~ 2026-05。
+          </p>
+          <p class="rules-note"><b>🔴 空頭/警示</b></p>
+          <ul>
+            <li><b>⚠ 法人未確認 (AVOID)</b>:紅燈延伸但法人仍紅 / 綠燈進場但法人量能皆未到位 · 40d 期限</li>
+            <li><b>⚠ 高點 ★★★★★+法人未確認</b>:續攻品質 5★ + 法人=紅 · 5d 期限(過後被多頭吃回)</li>
+            <li><b>⚠ 頂背離 (per-stock)</b>:價新高,RSI6 不跟 · 個股而定(10d 為強處)</li>
+          </ul>
+          <p class="rules-note"><b>🟢 多頭/續攻</b></p>
+          <ul>
+            <li><b>✨ 反轉 ★★★★+法人到位</b>:反轉品質 4★ + 法人=綠 · 40d 期限(最穩)</li>
+            <li><b>✨ 反轉 ★★★★★+法人到位</b>:反轉品質 5★ + 法人=綠 · 40d 期限(跌市更銳)</li>
+            <li><b>📈 強勢延伸 ★★★★★+法人觀望</b>:續攻品質 5★ + 法人=黃 · 20d 期限(機構未跟拋常續攻)</li>
+          </ul>
+          <p class="rules-note">
+            原 LEAD (法人提前) 與 反轉 3★+綠 chip 已移除:50 檔池上邊際接近零。
           </p>
         </details>
       </div>
@@ -2834,6 +2855,17 @@ function renderAlerts(alerts) {
   }).join("");
 }
 
+// Shared visibility toggle for the merged quality-panels wrapper.
+// Called after each inner panel render so the outer border only shows
+// when at least one inner panel is firing.
+function _syncQualityPanelsVisibility() {
+  const wrap = document.getElementById("qualityPanels");
+  const rev = document.getElementById("reversalQuality");
+  const top = document.getElementById("toppingQuality");
+  if (!wrap) return;
+  wrap.hidden = (!rev || rev.hidden) && (!top || top.hidden);
+}
+
 function renderReversalQuality(rq) {
   const wrap = document.getElementById("reversalQuality");
   // Hide noise: only show when at least 2 of 5 conditions hit. The
@@ -2841,6 +2873,7 @@ function renderReversalQuality(rq) {
   // sub-2 is just clutter.
   if (!rq || rq.score < 2) {
     wrap.hidden = true;
+    _syncQualityPanelsVisibility();
     return;
   }
   wrap.hidden = false;
@@ -2855,6 +2888,7 @@ function renderReversalQuality(rq) {
     return `<li class="${cls}">${mark} ${escapeHtml(c.name)}` +
       `<span class="rq-detail">${escapeHtml(c.detail || "")}</span></li>`;
   }).join("");
+  _syncQualityPanelsVisibility();
 }
 
 function renderToppingQuality(tq) {
@@ -2865,6 +2899,7 @@ function renderToppingQuality(tq) {
   const wrap = document.getElementById("toppingQuality");
   if (!tq || tq.score < 2) {
     wrap.hidden = true;
+    _syncQualityPanelsVisibility();
     return;
   }
   wrap.hidden = false;
@@ -2879,6 +2914,7 @@ function renderToppingQuality(tq) {
     return `<li class="${cls}">${mark} ${escapeHtml(c.name)}` +
       `<span class="rq-detail">${escapeHtml(c.detail || "")}</span></li>`;
   }).join("");
+  _syncQualityPanelsVisibility();
 }
 
 function renderOverallHistory(history) {
