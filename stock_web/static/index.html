@@ -679,36 +679,14 @@
     font-size: 12px;
   }
   .hero-overall .backtest-card .bt-head {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    gap: 6px 10px;
+    display: flex; flex-direction: column; gap: 2px;
     margin-bottom: 6px;
   }
   .hero-overall .backtest-card .bt-title {
     color: var(--text); font-weight: 500; font-size: 12.5px;
-    grid-column: 1 / 2;
-    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
   }
   .hero-overall .backtest-card .bt-meta {
     color: var(--text-faint); font-size: 11px;
-  }
-  .hero-overall .backtest-card .bt-spark-wrap {
-    grid-column: 2 / 3;
-    display: flex; align-items: center;
-    line-height: 0;
-  }
-  .hero-overall .backtest-card .bt-sparkline {
-    display: block;
-  }
-  @media (max-width: 480px) {
-    .hero-overall .backtest-card .bt-head {
-      grid-template-columns: 1fr;
-    }
-    .hero-overall .backtest-card .bt-spark-wrap {
-      grid-column: 1 / 2;
-      justify-content: flex-start;
-    }
   }
   .hero-overall .backtest-card .bt-grid {
     display: grid; grid-template-columns: 60px 1fr 1fr 1fr;
@@ -1373,7 +1351,6 @@
         <div class="backtest-card" id="backtestCard" hidden>
           <div class="bt-head">
             <span class="bt-title">Chip 歷史命中分布 <span class="bt-meta" id="btSubtitle"></span></span>
-            <span class="bt-spark-wrap" id="btSparkline"></span>
           </div>
           <div class="bt-grid" id="btGrid"></div>
           <div class="bt-foot" id="btFoot"></div>
@@ -2839,53 +2816,15 @@ async function loadBacktestStats(label, instLight, alerts, code, regime) {
   }
 }
 
-// Tiny inline SVG sparkline of alpha across 5/10/20/40d.
-// Visualises whether the signal builds (TOP-YEL pattern), decays
-// (TOP-RED, BEAR-DIV), or grows monotonically (REV). Compact —
-// ~140x32px next to the card title. Auto-scales the y-axis to fit
-// the data while keeping the zero-line visible.
-function _renderAlphaSparkline(rows) {
-  const W = 140, H = 32, PAD = 4;
-  const pts = rows.filter(r => r.alpha_med != null && !isNaN(r.alpha_med));
-  if (pts.length < 2) return "";
-  const ys = pts.map(p => p.alpha_med);
-  let yMin = Math.min(0, ...ys);
-  let yMax = Math.max(0, ...ys);
-  if (yMax - yMin < 0.005) { yMin -= 0.005; yMax += 0.005; }
-  const xStep = (W - PAD * 2) / (pts.length - 1);
-  const yScale = (H - PAD * 2) / (yMax - yMin);
-  const px = (i) => PAD + i * xStep;
-  const py = (v) => H - PAD - (v - yMin) * yScale;
-  const linePts = pts.map((p, i) => `${px(i).toFixed(1)},${py(p.alpha_med).toFixed(1)}`).join(" ");
-  const zeroY = py(0);
-  // Trend color: net direction across 5d → 40d
-  const start = pts[0].alpha_med, end = pts[pts.length - 1].alpha_med;
-  const color = end > start + 0.001 ? "var(--green)"
-              : end < start - 0.001 ? "var(--red)"
-              : "var(--text-muted)";
-  const dots = pts.map((p, i) =>
-    `<circle cx="${px(i).toFixed(1)}" cy="${py(p.alpha_med).toFixed(1)}" r="2" fill="${color}"/>`
-  ).join("");
-  return `
-    <svg class="bt-sparkline" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
-      <line x1="0" y1="${zeroY.toFixed(1)}" x2="${W}" y2="${zeroY.toFixed(1)}"
-            stroke="var(--border)" stroke-dasharray="2 2" stroke-width="1"/>
-      <polyline points="${linePts}" fill="none" stroke="${color}" stroke-width="1.5"
-                stroke-linejoin="round" stroke-linecap="round"/>
-      ${dots}
-    </svg>`;
-}
 
 function renderBacktestPlaceholder() {
   const card = document.getElementById("backtestCard");
   const grid = document.getElementById("btGrid");
   const subtitle = document.getElementById("btSubtitle");
   const foot = document.getElementById("btFoot");
-  const sparkHost = document.getElementById("btSparkline");
   if (!card || !grid) return;
   subtitle.textContent = "(目前無已驗證 chip 觸發)";
   grid.innerHTML = "";
-  if (sparkHost) sparkHost.innerHTML = "";
   foot.textContent =
     "已驗證 chip:⚠ 法人未確認 / ⚠ 高點 5★+紅 / ✨ 反轉 4★/5★+法人到位 / 📈 強勢延伸 5★+黃 / ⚠ 頂背離 (per-stock)";
   card.hidden = false;
@@ -2896,7 +2835,6 @@ function renderBacktestStats(alert, d, code, regime, allAlerts) {
   const grid = document.getElementById("btGrid");
   const subtitle = document.getElementById("btSubtitle");
   const foot = document.getElementById("btFoot");
-  const sparkHost = document.getElementById("btSparkline");
   if (!card || !grid) return;
 
   const horizons = ["5", "10", "20", "40"];
@@ -2989,10 +2927,6 @@ function renderBacktestStats(alert, d, code, regime, allAlerts) {
     ];
   });
   grid.innerHTML = [...header, ...body].join("");
-  // Inline sparkline showing the alpha trajectory across 5/10/20/40d
-  // — at a glance shows whether the signal is build (TOP-YEL),
-  // decay (TOP-RED, BEAR-DIV), or steady-positive (REV) shape.
-  if (sparkHost) sparkHost.innerHTML = _renderAlphaSparkline(rows);
   // bearish_divergence + topping_inst_red_5 are short-horizon signals
   // — bull-market drift washes them out past 20d, so 5-10d is the
   // meaningful read. topping_inst_yellow_5 is the opposite: signal
