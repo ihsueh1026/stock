@@ -1951,7 +1951,7 @@ function renderWatchCard(item) {
     ? `<span class="wc-rq" title="反轉品質 ${rq.score}/${rq.max} · ${escapeHtml(rq.desc || "")}(觀察用)">★${rq.score}</span>`
     : "";
   const tqBadge = tq && tq.score >= 2
-    ? `<span class="wc-tq" title="高點/續攻品質 ${tq.score}/${tq.max} · ${escapeHtml(tq.desc || "")}(觀察用)">★${tq.score}</span>`
+    ? `<span class="wc-tq" title="續攻品質 ${tq.score}/${tq.max} · ${escapeHtml(tq.desc || "")}(觀察用)">★${tq.score}</span>`
     : "";
   const rightGrp =
     `<span class="wc-right-grp">` +
@@ -2870,7 +2870,7 @@ function renderToppingQuality(tq) {
   wrap.hidden = false;
   document.getElementById("tqStars").textContent = tq.stars || "";
   document.getElementById("tqDesc").textContent =
-    `高點/續攻品質 · ${tq.desc || ""} (${tq.score}/${tq.max})`;
+    `續攻品質 · ${tq.desc || ""} (${tq.score}/${tq.max})`;
   document.getElementById("tqNote").textContent = tq.note || "";
   const ul = document.getElementById("tqChecks");
   ul.innerHTML = (tq.checks || []).map(c => {

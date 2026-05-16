@@ -1664,12 +1664,12 @@ def _topping_quality(window: list[dict]) -> dict | None:
     score = sum(1 for c in checks if c["passed"])
     STARS = ["—", "★", "★★", "★★★", "★★★★", "★★★★★"]
     DESCS = [
-        "未呈高點特徵",
+        "未呈續攻特徵",
         "條件不足",
         "部分條件成立",
-        "中等高點條件",
-        "良好高點條件",
-        "高品質高點/續攻位置",
+        "中等續攻條件",
+        "良好續攻條件",
+        "高品質續攻位置",
     ]
     return {
         "score": score,
