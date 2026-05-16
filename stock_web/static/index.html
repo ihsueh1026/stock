@@ -2057,16 +2057,14 @@ function renderWatchCard(item) {
   const sm = item.summary || { light: "gray", label: "—", passed: 0, warning: 0, danger: 0 };
   const chg = item.change_pct;
   const chgCls = chg == null ? "" : chg > 0 ? "up" : chg < 0 ? "down" : "";
-  const lights = (item.step_lights || []).map((light, i) =>
-    `<span class="step-light ${light}" title="${i + 1}. ${STEP_NAMES[i]}"></span>`
-  ).join("");
   // Format date as MM/DD for compactness
   const asOf = item.as_of ? item.as_of.slice(5).replace("-", "/") : "";
-  // Reversal-quality badge: only shown when ≥2/5 (per backtest, lower
-  // scores carry no signal). Compact "★N" form. Wrapped together with
-  // step-lights so on narrow cards they wrap as a group.
-  // Topping-quality badge parallel — different colour (warm-amber)
-  // distinguishes "low-point reversal" vs "high-point/continuation".
+  // Reversal/續攻 quality badges: shown when ≥2/5 (per backtest,
+  // lower scores carry no signal). Compact "★N". Different colours
+  // (gold vs warm-amber) distinguish low-point reversal vs
+  // high-point/continuation. The 7-step lights row was removed —
+  // step detail lives on the detail page; the summary-label colour
+  // + chip badges already convey the at-a-glance state.
   const rq = item.reversal_quality;
   const tq = item.topping_quality;
   const rqBadge = rq && rq.score >= 2
@@ -2075,12 +2073,9 @@ function renderWatchCard(item) {
   const tqBadge = tq && tq.score >= 2
     ? `<span class="wc-tq" title="續攻品質 ${tq.score}/${tq.max} · ${escapeHtml(tq.desc || "")}(觀察用)">★${tq.score}</span>`
     : "";
-  const rightGrp =
-    `<span class="wc-right-grp">` +
-    `<span class="step-lights" title="${sm.passed}/${sm.total || 8} 通過${sm.danger ? ` · ${sm.danger} 危險` : ""}">${lights}</span>` +
-    rqBadge +
-    tqBadge +
-    `</span>`;
+  const rightGrp = (rqBadge || tqBadge)
+    ? `<span class="wc-right-grp">${rqBadge}${tqBadge}</span>`
+    : "";
   return `
     <a class="watch-card ${sm.light}" href="#/stock/${code}" data-card-code="${code}" draggable="true">
       <div class="wc-row1">
