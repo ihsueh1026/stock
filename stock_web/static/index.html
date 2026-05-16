@@ -259,9 +259,20 @@
     border: 1px solid var(--green-soft, rgba(0,200,120,0.3));
   }
   .taiex-bar .tx-regime.bear {
-    background: rgba(255,100,80,0.12); color: var(--red);
-    border-color: var(--red-soft, rgba(255,100,80,0.35));
+    font-size: 12.5px; padding: 2px 8px; font-weight: 700;
+    background: rgba(255,100,80,0.18); color: var(--red);
+    border-color: var(--red-soft, rgba(255,100,80,0.5));
   }
+  /* When TAIEX is in bear regime, lift the whole bar's visual weight
+     — soft red tint on background + matching border. Chip behaviour
+     differs in bear (LEAD inverts, AVOID strengthens) per the
+     bear-regime study, so the user wants this context loud. */
+  .taiex-bar.bear {
+    background: rgba(255,100,80,0.08);
+    border-color: var(--red-soft, rgba(255,100,80,0.4));
+    color: var(--text);
+  }
+  .taiex-bar.bear .tx-label { color: var(--red); font-weight: 600; }
   .taiex-bar input {
     width: 90px; padding: 3px 6px; font-size: 12px;
     border: 1px solid var(--border); border-radius: 6px;
@@ -546,6 +557,36 @@
   .wc-right-grp {
     display: inline-flex; align-items: center; gap: 8px;
     margin-left: auto;
+  }
+  /* Chip-fired badges on the watchlist card. Show today's firing
+     chips inline next to the summary label so the user spots
+     signals while scanning. Icon-only (the chip's emoji) keeps
+     the badge tiny; the full chip name lives in the tooltip. */
+  .wc-chip-badges {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-left: 6px; flex-shrink: 0;
+  }
+  .wc-chip-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 4px;
+    font-size: 11px; line-height: 1;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+  }
+  .wc-chip-badge.warn {
+    color: var(--orange);
+    background: rgba(245,160,80,0.12);
+    border-color: rgba(245,160,80,0.35);
+  }
+  .wc-chip-badge.danger {
+    color: var(--red);
+    background: rgba(255,100,80,0.14);
+    border-color: rgba(255,100,80,0.4);
+  }
+  .wc-chip-badge.info {
+    color: var(--blue, #6cb6ff);
+    background: rgba(108,182,255,0.10);
+    border-color: rgba(108,182,255,0.3);
   }
   .step-lights .step-light {
     width: 8px; height: 8px; border-radius: 50%;
@@ -1662,6 +1703,44 @@ async function loadTodayChips() {
   }
 }
 
+// Per-watchlist-card chip data, set by renderTodayChips. Maps
+// code → [{ stat_key, icon, tone, label }, ...]. Used by
+// _injectChipBadgesIntoCards() to render the chip badges that
+// surface today's firing chips directly on the watchlist tile,
+// so a user scanning the list sees signals without clicking in.
+const _chipsByCode = new Map();
+
+function _injectChipBadgesIntoCards() {
+  const grid = document.getElementById("watchlistGrid") || document.getElementById("grid");
+  if (!grid) return;
+  grid.querySelectorAll(".watch-card").forEach(card => {
+    const code = card.getAttribute("data-card-code");
+    if (!code) return;
+    let host = card.querySelector(".wc-chip-badges");
+    const firing = _chipsByCode.get(code) || [];
+    if (firing.length === 0) {
+      if (host) host.remove();
+      return;
+    }
+    if (!host) {
+      host = document.createElement("span");
+      host.className = "wc-chip-badges";
+      // Insert into wc-signal row, before the right-group of step
+      // lights so chips read left-to-right with the summary label.
+      const signal = card.querySelector(".wc-signal");
+      const rg = card.querySelector(".wc-right-grp");
+      if (signal && rg) signal.insertBefore(host, rg);
+      else if (signal) signal.appendChild(host);
+      else return;
+    }
+    host.innerHTML = firing.map(f => {
+      const tone = f.tone || "info";
+      const icon = f.icon || "•";
+      return `<span class="wc-chip-badge ${tone}" title="${escapeHtml(f.label || f.stat_key || '')}">${escapeHtml(icon)}</span>`;
+    }).join("");
+  });
+}
+
 function renderTodayChips(d) {
   const body = document.getElementById("todayChipsBody");
   const meta = document.getElementById("todayChipsMeta");
@@ -1670,6 +1749,22 @@ function renderTodayChips(d) {
   const scanned = d.scanned || 0;
   const total = d.total || 0;
   meta.textContent = `(掃描 ${scanned} 檔 · 觸發 ${total} 次)`;
+  // Rebuild the code → chips map for injecting badges onto cards.
+  _chipsByCode.clear();
+  for (const [key, fires] of Object.entries(chips)) {
+    const display = CHIP_DISPLAY[key] || { label: key, tone: "info" };
+    for (const f of (fires || [])) {
+      const list = _chipsByCode.get(f.code) || [];
+      list.push({
+        stat_key: key,
+        icon: f.icon || "•",
+        tone: display.tone || "info",
+        label: display.label || key,
+      });
+      _chipsByCode.set(f.code, list);
+    }
+  }
+  _injectChipBadgesIntoCards();
   if (total === 0) {
     body.innerHTML = `<div class="tc-empty">無已驗證 chip 觸發。已驗證 chip: ⚠ 法人未確認 / ✨ 反轉 ★★★★ ~ ★★★★★ +法人到位</div>`;
     return;
@@ -1719,13 +1814,15 @@ function renderTaiexBar(data) {
   const bar = document.getElementById("taiexBar");
   if (!bar) return;
   bar.hidden = false;
-  bar.classList.remove("missing", "manual");
+  bar.classList.remove("missing", "manual", "bear");
   const fmt = v => v == null ? "—" : Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 });
   // Regime tag — backtest/bear_regime_test.py showed LEAD inverts and
   // AVOID strengthens in bear, so users want to see this context next
-  // to the index level.
+  // to the index level. Bear state also tints the whole bar to make
+  // the regime obvious at a glance, not just a small badge.
+  if (data.regime === "bear") bar.classList.add("bear");
   const regimeTag = data.regime === "bear"
-    ? `<span class="tx-regime bear" title="TAIEX 自 60 日高點跌幅 ≥10%">跌市</span>`
+    ? `<span class="tx-regime bear" title="TAIEX 自 60 日高點跌幅 ≥10% · chip 解讀請注意 regime 影響">⚠ 跌市</span>`
     : data.regime === "bull"
       ? `<span class="tx-regime" title="TAIEX 自 60 日高點跌幅 <10%">多頭</span>`
       : "";
@@ -1827,6 +1924,10 @@ function renderWatchlist(items) {
   const sorted = sortWatchItems(items, mode);
   grid.dataset.sortMode = mode;
   grid.innerHTML = sorted.map(renderWatchCard).join("");
+  // Re-inject chip badges from the cached chip scan so a watchlist
+  // refresh doesn't drop the badges until the next /api/watchlist/chips
+  // call returns (which is cached for the trading day anyway).
+  _injectChipBadgesIntoCards();
   // Wire up actions
   grid.querySelectorAll("[data-action]").forEach(btn => {
     btn.addEventListener("click", (e) => {
