@@ -1264,20 +1264,23 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
             })
 
     # --- Topping-quality conditional chips ---
-    # backtest/topping_quality_study.py on the 50-stock universe:
+    # backtest/topping_quality_study.py on the 50-stock universe
+    # (runup threshold raised to ≥15% on 2026-05; check #2 was too
+    # permissive at ≥5% with 59% bar-level pass rate, which made the
+    # 5★ score under-discriminating):
     #
-    # 5★ + 法人=red → 5d alpha -1.01% / 39% (n=120), per-stock 3:1
-    #   negative. Short-horizon bearish, signal dies past 20d (bull
-    #   drift takes over, alpha flips +1.15% at 40d).
-    # 5★ + 法人=yellow → 20d alpha +1.96% / 58% (n=263), per-stock
-    #   1.8:1 positive (14 neg : 4 flat : 25 pos). COUNTER-INTUITIVE
-    #   bullish — overbought + institutions holding fire is a
-    #   continuation configuration, not a topping configuration. UI
-    #   framed as "強勢延伸" to avoid the "高點" label suggesting the
-    #   wrong direction.
-    # 4★ + 法人=red → essentially flat (-0.12% to +0.14% across
-    #   horizons), two-tail offsetting per-stock. Skipped.
-    # 3★ + 法人=red → pool edge dilutes to 1.5:1 by 20d. Skipped.
+    # 5★ + 法人=red → 5d alpha -2.79% / 32% (n=57). Short-horizon
+    #   bearish, signal dies past 20d (bull drift takes over, alpha
+    #   flips +1.25% at 40d). Per-stock pool is thin (n≥3 only on
+    #   5 codes) so most stocks fall back to pool stats.
+    # 5★ + 法人=yellow → 20d alpha +3.66% / 61% (n=184). Continuation
+    #   configuration — overbought + institutions holding fire usually
+    #   resolves up, not down. Per-stock n≥3 on 31 codes (much more
+    #   reliable per-stock coverage than the red sibling). UI framed
+    #   as "強勢延伸" to avoid the "高點" label suggesting bearish.
+    # 4★ + 法人=red → flat at ≥5%, untested at ≥15% but the per-stock
+    #   asymmetry was the bigger issue. Skipped.
+    # 3★ + 法人=red → diluted per-stock at ≥5%. Skipped.
     #
     # Mirror of reversal_inst_confirm: same exact-score gating logic.
     if (steps and topping_quality
@@ -1632,10 +1635,16 @@ def _topping_quality(window: list[dict]) -> dict | None:
         "passed": near_high_pct <= 2.0,
         "detail": f"距 20 日高 -{near_high_pct:.1f}%",
     })
-    # 2. 前期漲幅 ≥5%
+    # 2. 前期漲幅 ≥15%
+    # Originally ≥5% (mirror of reversal's ≥5% drawdown), but empirical
+    # pass rate was 58.9% — essentially "any stock that isn't completely
+    # flat", which made the check non-discriminating. Threshold raise to
+    # ≥15% (pass rate ~18% on 50-stock pool) sharpens the 5★ signal:
+    # 5★+red @ 5d -1.01% → -1.88%, 5★+yellow @ 20d +1.96% → +3.13%.
+    # See `backtest/topping_quality_study.py` threshold sweep.
     checks.append({
-        "name": "前期漲幅 ≥5%",
-        "passed": runup_pct >= 5.0,
+        "name": "前期漲幅 ≥15%",
+        "passed": runup_pct >= 15.0,
         "detail": f"自 20 日低 +{runup_pct:.1f}%",
     })
     # 3. K > 75 (KD 超買)

@@ -82,18 +82,18 @@ CHIP_KINDS = (
     # Headline horizon is 10d (法人=red shows -1.22% / 44%, n=77)
     # since the signal is washed out by bull drift past 20d.
     "bearish_divergence",
-    # 高點 5★ + 法人=red: short-horizon bearish (5d alpha -1.01% /
-    # 39% win on 50-stock pool, n=120). Per-stock 3:1 negative
-    # asymmetry — cleanest topping cell measured. Headline 5d
-    # since signal dies by 20d (bull drift). Mirror of
-    # reversal_inst_confirm_5 (which uses 法人=green).
+    # 高點 5★ + 法人=red: short-horizon bearish (5d alpha -2.79% /
+    # 32% win on 50-stock pool, n=57 — after raising the runup
+    # threshold to ≥15% on 2026-05; was -1.01% / 39% at the old
+    # ≥5%). Per-stock pool is thin (5 codes with n≥3) so most
+    # stocks fall back to pool stats. Headline 5d since signal
+    # dies by 20d. Mirror of reversal_inst_confirm_5.
     "topping_inst_red_5",
     # 5★ topping + 法人=yellow: counter-intuitively BULLISH at 20d
-    # (+1.96% / 58% win, n=263). Per-stock 1.8:1 positive (14:4:25)
-    # — overbought + institutions holding fire = momentum-extension
-    # configuration. Framed in UI as "強勢延伸" not "topping" so the
-    # bearish-sounding label doesn't conflict with the bullish data.
-    # Headline 20d (signal builds with time, opposite of topping_red).
+    # (+3.66% / 61% win, n=184 — was +1.96% / 58% at ≥5%). Per-stock
+    # n≥3 on 31 codes so per-stock coverage is healthy. Overbought +
+    # institutions holding fire = momentum-extension configuration.
+    # UI labelled "強勢延伸" not "topping". Headline 20d.
     "topping_inst_yellow_5",
 )
 

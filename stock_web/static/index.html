@@ -2800,11 +2800,11 @@ function renderBacktestStats(alert, d, code, regime) {
   } else if (isToppingRed5) {
     foot.textContent = usePerStock
       ? "高點 5★+法人=red 訊號壽命 ≈ 5 日(過後被多頭吃回) · 該檔自身命中 · 觀察用"
-      : "高點 5★+法人=red @ 5d 池 -1.0% / 39% win(n=120) · 過 20d 失效 · 短期警示";
+      : "高點 5★+法人=red @ 5d 池 -2.8% / 32% win(n=57) · 過 20d 失效 · 短期警示";
   } else if (isToppingYellow5) {
     foot.textContent = usePerStock
       ? "強勢延伸:5★+法人觀望 = 過熱但機構未跟拋 → 通常續攻(20日最強) · 該檔自身命中"
-      : "5★+法人=yellow @ 20d 池 +2.0% / 58% win(n=263) · 機構觀望時技術過熱常續攻";
+      : "5★+法人=yellow @ 20d 池 +3.7% / 61% win(n=184) · 機構觀望時技術過熱常續攻";
   } else if (usePerStock) {
     foot.textContent =
       "alpha 為該檔自身歷史命中 · vs 全池 = 該檔 − 30 檔池中位 · 觀察用";
