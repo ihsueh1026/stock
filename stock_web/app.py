@@ -1269,15 +1269,15 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
     # permissive at ≥5% with 59% bar-level pass rate, which made the
     # 5★ score under-discriminating):
     #
-    # 5★ + 法人=red → 5d alpha -2.79% / 32% (n=57). Short-horizon
-    #   bearish, signal dies past 20d (bull drift takes over, alpha
-    #   flips +1.25% at 40d). Per-stock pool is thin (n≥3 only on
-    #   5 codes) so most stocks fall back to pool stats.
-    # 5★ + 法人=yellow → 20d alpha +3.66% / 61% (n=184). Continuation
-    #   configuration — overbought + institutions holding fire usually
-    #   resolves up, not down. Per-stock n≥3 on 31 codes (much more
-    #   reliable per-stock coverage than the red sibling). UI framed
-    #   as "強勢延伸" to avoid the "高點" label suggesting bearish.
+    # 5★ + 法人=red → 5d alpha -2.72% / 33% (n=46 after K>80 raise
+    #   from K>75; was -2.79% / 32% n=57). Short-horizon bearish,
+    #   signal dies past 20d. Per-stock pool is thin (5 codes with
+    #   n≥3) so most stocks fall back to pool stats.
+    # 5★ + 法人=yellow → 20d alpha +3.76% / 61% (n=144 after K>80
+    #   raise; was +3.66% / 61% n=184). Continuation configuration —
+    #   overbought + institutions holding fire usually resolves up,
+    #   not down. Per-stock n≥3 on 26 codes (reliable per-stock
+    #   coverage). UI labelled "強勢延伸" not "topping".
     # 4★ + 法人=red → flat at ≥5%, untested at ≥15% but the per-stock
     #   asymmetry was the bigger issue. Skipped.
     # 3★ + 法人=red → diluted per-stock at ≥5%. Skipped.
@@ -1546,10 +1546,14 @@ def _reversal_quality(window: list[dict]) -> dict | None:
         "passed": drawdown_pct <= -5.0,
         "detail": f"DD20={drawdown_pct:+.1f}%",
     })
-    # 3. K < 25 (KD 超賣)
+    # 3. K < 20 (KD 超賣)
+    # Tightened from K<25 on 2026-05 after threshold sweep showed
+    # K<20 strengthens the validated chips (反轉 5★ +0.6pp, 4★ +0.2pp
+    # at 40d alpha) with modest sample loss. K<15 over-filters and
+    # hurts 4★. K=20 sits at the K-value P10 across 50-stock pool.
     checks.append({
-        "name": "K 超賣 (<25)",
-        "passed": k is not None and k < 25,
+        "name": "K 超賣 (<20)",
+        "passed": k is not None and k < 20,
         "detail": f"K={k:.1f}" if k is not None else "K 資料不足",
     })
     # 4. RSI6 < 35
@@ -1647,10 +1651,15 @@ def _topping_quality(window: list[dict]) -> dict | None:
         "passed": runup_pct >= 15.0,
         "detail": f"自 20 日低 +{runup_pct:.1f}%",
     })
-    # 3. K > 75 (KD 超買)
+    # 3. K > 80 (KD 超買)
+    # Tightened from K>75 on 2026-05 (paired with reversal's K<20 cut).
+    # 強勢延伸 5★+黃 @ 20d strengthens +0.5pp (+3.13 → +3.67),
+    # 高點 5★+紅 @ 5d holds steady. K>85 thins samples to 31 for the
+    # red chip without enough signal gain to justify. K=80 sits at
+    # the K-value P90 across 50-stock pool.
     checks.append({
-        "name": "K 超買 (>75)",
-        "passed": k is not None and k > 75,
+        "name": "K 超買 (>80)",
+        "passed": k is not None and k > 80,
         "detail": f"K={k:.1f}" if k is not None else "K 資料不足",
     })
     # 4. RSI6 > 65
