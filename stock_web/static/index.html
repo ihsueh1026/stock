@@ -2093,9 +2093,7 @@ function renderWatchCard(item) {
         <span class="wc-asof">${asOf}</span>
       </div>
       <div class="wc-signal">
-        <span class="wc-label ${sm.light}">
-          <span class="signal-dot"></span>${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F535}⚪]\s*/u, ""))}
-        </span>
+        <span class="wc-label ${sm.light}">${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F535}⚪]\s*/u, ""))}</span>
         ${rightGrp}
       </div>
     </a>`;
