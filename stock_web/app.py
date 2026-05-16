@@ -1967,12 +1967,18 @@ def _watchlist_item(code: str) -> dict:
         last = full[-1]
         dash = compute_dashboard(full, code, market=cached_market, compact=True)
         rq = dash.get("reversal_quality") or None
+        tq = dash.get("topping_quality") or None
         # Compact form for the watchlist card — full check list lives on
         # the detail page.
         rq_compact = (
             {"score": rq["score"], "max": rq["max"],
              "stars": rq["stars"], "desc": rq["desc"]}
             if rq else None
+        )
+        tq_compact = (
+            {"score": tq["score"], "max": tq["max"],
+             "stars": tq["stars"], "desc": tq["desc"]}
+            if tq else None
         )
         return {
             **base,
@@ -1987,6 +1993,7 @@ def _watchlist_item(code: str) -> dict:
             "summary": dash["summary"],
             "step_lights": [s["light"] for s in dash["steps"]],
             "reversal_quality": rq_compact,
+            "topping_quality": tq_compact,
         }
     except (OSError, json.JSONDecodeError, KeyError):
         return base
