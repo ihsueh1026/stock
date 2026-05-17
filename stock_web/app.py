@@ -2259,6 +2259,76 @@ def get_news(code: str, days: int = 14):
     }
 
 
+@app.get("/api/news_log/{code}")
+def get_news_log(code: str, days: int = 14):
+    """Return Yahoo Finance news for one stock from the manually-curated
+    news_log.jsonl, filtered to the last `days`.
+
+    Unlike `/api/news/{code}` (MOPS auto-fetch), news_log.jsonl is
+    populated through Claude conversation when the user says
+    "更新 watchlist 新聞" — see CLAUDE.md "Manual-via-Claude workflows"
+    for the bootstrap + update protocol. The endpoint just slices the
+    JSONL by code + recency; the panel auto-hides when there are no
+    records for this code.
+
+    Response also includes `last_updated` (most recent fetched_at across
+    ALL records, not just this code) so the UI can flag staleness when
+    the user hasn't refreshed for a while.
+    """
+    _validate_code(code)
+    if days < 1 or days > 60:
+        raise HTTPException(400, "days must be between 1 and 60")
+    log_path = Path(__file__).resolve().parent / "news_log.jsonl"
+    if not log_path.exists():
+        return {"code": code, "days": days, "items": [], "last_updated": None,
+                "total_in_log": 0}
+    from datetime import date as _date, timedelta
+    cutoff = _date.today() - timedelta(days=days)
+    items: list[dict] = []
+    last_updated: str | None = None
+    try:
+        with log_path.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                fa = r.get("fetched_at")
+                if fa and (last_updated is None or fa > last_updated):
+                    last_updated = fa
+                if r.get("code") != code:
+                    continue
+                nd = r.get("news_date")
+                if not nd or nd == "no-date":
+                    # Treat undated items as "today" so they at least show
+                    # up in the most-recent window.
+                    nd_date = _date.today()
+                else:
+                    try:
+                        from datetime import datetime as _dt
+                        nd_date = _dt.fromisoformat(nd).date()
+                    except (ValueError, TypeError):
+                        continue
+                if nd_date < cutoff:
+                    continue
+                items.append(r)
+    except OSError:
+        pass
+    # Sort newest first, then ties by source name for stability
+    items.sort(key=lambda r: (r.get("news_date") or "", r.get("source") or ""),
+               reverse=True)
+    return {
+        "code": code,
+        "days": days,
+        "items": items,
+        "last_updated": last_updated,
+        "total_in_log": sum(1 for _ in log_path.open()) if log_path.exists() else 0,
+    }
+
+
 @app.get("/api/fundamentals/{code}")
 def get_fundamentals(code: str, close: Optional[float] = None):
     """Return the last 3 fiscal years (and most recent quarters if

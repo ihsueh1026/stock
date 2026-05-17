@@ -138,3 +138,13 @@ Record schema:
 Cadence: weekly or biweekly (user-paced). No automation. The intent is to build a multi-month dataset that, joined with `forward_log.jsonl` and historical chip events, will eventually answer "does chip × sentiment combo carry independent edge?"
 
 When the user asks for **chip × sentiment analysis**, write an ad-hoc script that reads both JSONLs, joins on (code, date), buckets by sentiment, and reports forward alpha per chip × sentiment cell. Don't ship UI for it until the sample is large enough (3+ months of accumulation).
+
+### Trigger phrase memo
+
+| User says | Action |
+|---|---|
+| 「更新 watchlist 新聞」 | Run the news_log.jsonl refresh flow (see above): read existing log → WebFetch each watchlist code's Yahoo news page → dedup → classify + extract → append. Report new-record count + sentiment delta. |
+| 「看 news_log 統計」 | Read `stock_web/news_log.jsonl` and report total records, per-code count, sentiment distribution, source distribution, analyst-mention count, last fetched_at. No fetching, just read+aggregate. |
+| 「跑 chip × sentiment 分析」 | Read `stock_web/news_log.jsonl` + `stock_web/forward_log.jsonl`, join on (code, date ± window), bucket by sentiment, report per-chip × per-sentiment forward alpha cells. If sample is thin (<3 months accumulation, <50 events per cell), report "early — wait for more data" rather than overselling weak signal. |
+
+The news_log panel on the individual stock detail page (`/api/news_log/{code}?days=14`) auto-hides for stocks with zero records and shows a freshness indicator (last_updated date / "X 日前" / "⚠ X 日前(建議刷新)" when >7 days) so the user knows when to trigger the refresh.

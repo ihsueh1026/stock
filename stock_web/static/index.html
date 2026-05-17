@@ -1120,6 +1120,45 @@
   }
   .news-empty { color: var(--text-faint); padding: 16px 0; text-align: center; font-size: 13px; }
   #newsMeta { font-size: 11px; }
+  #newsLogMeta { font-size: 11px; color: var(--text-faint); }
+  /* news_log items: layout differs slightly from MOPS (.news-item)
+     — sentiment chip on left, then a body block with date/source on
+     one line, title on next, optional summary + analyst-mention chips
+     below. Reuses .n-chip color classes from .news-item. */
+  .news-log-card .n-item {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 10px; align-items: start;
+    font-size: 13px; line-height: 1.45;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border-soft);
+  }
+  .news-log-card .n-item:last-child { border-bottom: none; }
+  .news-log-card .n-chip {
+    padding: 1px 6px; border-radius: 999px;
+    font-size: 11px; font-weight: bold;
+    justify-self: start; align-self: start; margin-top: 2px;
+    white-space: nowrap;
+  }
+  .news-log-card .n-chip.pos { background: rgba(46, 204, 113, .15); color: var(--green); }
+  .news-log-card .n-chip.neg { background: rgba(231, 76, 60, .15); color: var(--red); }
+  .news-log-card .n-chip.neu { background: rgba(255, 255, 255, .06); color: var(--text-faint); }
+  .news-log-card .n-chip.unk { background: rgba(243, 156, 18, .15); color: var(--orange); }
+  .news-log-card .n-line { font-size: 11px; color: var(--text-faint); margin-bottom: 2px; }
+  .news-log-card .n-date { font-variant-numeric: tabular-nums; }
+  .news-log-card .n-title { color: var(--text); word-break: break-word; }
+  .news-log-card .n-sum {
+    margin-top: 3px; color: var(--text-muted); font-size: 12px;
+    line-height: 1.4;
+  }
+  .news-log-card .n-am {
+    margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .news-log-card .n-am-chip {
+    font-size: 10.5px; padding: 1px 6px; border-radius: 6px;
+    background: rgba(86, 156, 214, 0.12);
+    border: 1px solid rgba(86, 156, 214, 0.3);
+    color: #9cd6ff;
+  }
 
   .revenue-body .rev-month {
     font-size: 12px; color: var(--text-faint);
@@ -1559,7 +1598,7 @@
     <section class="two-col" id="newsRevCol" hidden>
       <div class="card news-card">
         <div class="card-title">
-          <span>消息面 <span class="meta news-days">過去 14 天</span></span>
+          <span>消息面 <span class="meta news-days">過去 14 天 · MOPS</span></span>
           <span class="news-head-right">
             <button type="button" class="ghost news-copy-btn" id="newsCopyBtn"
                     title="複製整理好的清單到剪貼簿,貼到 Claude 分析"
@@ -1570,6 +1609,15 @@
         <div class="news-list" id="newsList">
           <div class="news-empty">載入中...</div>
         </div>
+      </div>
+      <div class="card news-log-card" id="newsLogCard" hidden>
+        <div class="card-title">
+          <span>媒體新聞 <span class="meta news-days">過去 14 天 · Yahoo</span></span>
+          <span class="news-head-right">
+            <span class="meta" id="newsLogMeta"></span>
+          </span>
+        </div>
+        <div class="news-list" id="newsLogList"></div>
       </div>
       <div class="card revenue-card">
         <div class="card-title">月營收</div>
@@ -2429,6 +2477,7 @@ async function loadStock(code) {
     // News + revenue + fundamentals load async — they hit MOPS and
     // shouldn't block the main dashboard render.
     loadNews(data.code);
+    loadNewsLog(data.code);  // Yahoo news from manual news_log.jsonl
     loadRevenue(data.code);
     loadFundamentals(data.code, last.close);
   } catch (e) {
@@ -2453,6 +2502,91 @@ async function loadNews(code) {
     list.innerHTML =
       `<div class="news-empty">載入失敗:${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Yahoo Finance news from the manually-curated news_log.jsonl.
+// Auto-hides the whole card when the stock has zero records in the
+// log. Updated through Claude conversation ("更新 watchlist 新聞") so
+// the freshness indicator nudges the user when last_updated drifts.
+async function loadNewsLog(code) {
+  const card = document.getElementById("newsLogCard");
+  const list = document.getElementById("newsLogList");
+  const meta = document.getElementById("newsLogMeta");
+  if (!card || !list) return;
+  try {
+    const res = await fetch(`/api/news_log/${encodeURIComponent(code)}?days=14`);
+    if (!res.ok) {
+      card.hidden = true;
+      return;
+    }
+    const d = await res.json();
+    renderNewsLog(d, card, list, meta);
+  } catch (e) {
+    card.hidden = true;
+  }
+}
+
+function renderNewsLog(d, card, list, meta) {
+  const items = d.items || [];
+  if (items.length === 0) {
+    // No records for this stock — hide the whole card.
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  // Freshness indicator — flags when last_updated is stale enough
+  // that the user should consider running "更新 watchlist 新聞".
+  if (meta) {
+    const lu = d.last_updated;
+    let freshTag = "";
+    if (lu) {
+      const luDate = new Date(lu + "T00:00:00");
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const daysAgo = Math.floor((today - luDate) / (1000 * 60 * 60 * 24));
+      if (daysAgo <= 1) freshTag = `📅 ${lu}`;
+      else if (daysAgo <= 7) freshTag = `📅 ${daysAgo} 日前更新`;
+      else freshTag = `⚠ ${daysAgo} 日前更新(建議刷新)`;
+    }
+    // Sentiment summary count
+    const sentCount = { 利多: 0, 利空: 0, 中性: 0 };
+    items.forEach(it => { sentCount[it.sentiment] = (sentCount[it.sentiment] || 0) + 1; });
+    const sentLine = `${items.length} 則 · 多/空/中 ${sentCount["利多"]}/${sentCount["利空"]}/${sentCount["中性"]}`;
+    meta.textContent = `${sentLine}${freshTag ? " · " + freshTag : ""}`;
+  }
+  // Render each item — sentiment-colored chip on the left, then
+  // date, source, title. Analyst mentions surfaced as small sub-chips.
+  list.innerHTML = items.map(it => {
+    const sent = it.sentiment || "";
+    const cls = sent === "利多" ? "pos"
+              : sent === "利空" ? "neg"
+              : sent === "中性" ? "neu"
+              : "unk";
+    const dateShort = (it.news_date || "").slice(5).replace("-", "/") || "—";
+    const src = escapeHtml(it.source || "");
+    const title = escapeHtml(it.title || "");
+    const summary = it.summary && it.summary !== it.title
+      ? `<div class="n-sum">${escapeHtml(it.summary)}</div>` : "";
+    const am = it.analyst_mentions || [];
+    const amHtml = am.length
+      ? `<div class="n-am">` + am.map(m => {
+          const parts = [m.firm];
+          if (m.target) parts.push(`目標 ${m.target}`);
+          if (m.action) parts.push(m.action);
+          return `<span class="n-am-chip">${escapeHtml(parts.join(" · "))}</span>`;
+        }).join("") + `</div>`
+      : "";
+    return `
+      <div class="n-item">
+        <span class="n-chip ${cls}">${escapeHtml(sent || "—")}</span>
+        <div class="n-body">
+          <div class="n-line"><span class="n-date">${dateShort}</span> · <span class="n-src">${src}</span></div>
+          <div class="n-title">${title}</div>
+          ${summary}
+          ${amHtml}
+        </div>
+      </div>`;
+  }).join("");
 }
 
 async function loadRevenue(code) {
