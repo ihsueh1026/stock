@@ -729,6 +729,52 @@
     color: #ff9d99;
   }
   .alert-chip .al-icon { font-size: 13px; }
+  /* Streak badge — multi-day chip firing. .hc variant uses a
+     brighter / glowy presentation since "high conviction" cells
+     (e.g. 反轉 4★+綠 streak 4+ → +7.5%/85%) warrant the visual
+     emphasis. */
+  .alert-chip .al-streak {
+    margin-left: 4px; padding: 1px 6px;
+    border-radius: 8px; font-size: 11px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text-muted);
+  }
+  .alert-chip .al-streak.hc {
+    background: rgba(0,200,120,0.18);
+    border-color: rgba(0,200,120,0.5);
+    color: var(--green);
+    font-weight: 600;
+  }
+  /* Industry-conditional note — small sub-label on the chip.
+     "warn" tone (orange/red) when the industry is known to dampen
+     or invert this chip; "info" tone (blue) when the industry
+     actually amplifies it (e.g. 光電 + bearish_div). */
+  .alert-chip .al-ind {
+    margin-left: 6px; padding: 1px 6px;
+    border-radius: 8px; font-size: 10.5px;
+    background: rgba(255,255,255,0.06);
+    border: 1px dashed rgba(255,255,255,0.2);
+    color: var(--text-faint);
+    max-width: 32ch; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .alert-chip .al-ind.warn {
+    background: rgba(245,160,80,0.10);
+    border-color: rgba(245,160,80,0.35);
+    color: var(--orange);
+  }
+  .alert-chip .al-ind.info {
+    background: rgba(86,156,214,0.08);
+    border-color: rgba(86,156,214,0.25);
+    color: #9cd6ff;
+  }
+  /* On narrow screens, let the chip wrap so the industry note
+     doesn't push the chip off-screen. */
+  @media (max-width: 640px) {
+    .alert-chip { flex-wrap: wrap; }
+    .alert-chip .al-ind { white-space: normal; max-width: none; }
+  }
   /* Shared border/padding lives on the outer wrapper so reversal +
      topping panels stack cleanly without double-bordering when both
      fire (rare but possible). Inner panels just space themselves. */
@@ -3097,7 +3143,29 @@ function renderAlerts(alerts) {
   strip.innerHTML = alerts.map(a => {
     const tone = a.tone || "info";
     const icon = a.icon ? `<span class="al-icon">${escapeHtml(a.icon)}</span>` : "";
-    return `<span class="alert-chip ${tone}">${icon}<span>${escapeHtml(a.text || "")}</span></span>`;
+    // Streak badge — appears when the chip has been firing for ≥2
+    // consecutive trading days. Studies show streak materially
+    // changes forward alpha for some chips (e.g. 反轉 4★+綠 streak
+    // 4+ → +7.5%/85% vs +2.0%/57% single-day; 反轉 5★+綠 streak
+    // 2-3 actually inverts to -3.3%). The 高確信 marker fires for
+    // chips with a known sweet-spot streak (currently only 4★+綠
+    // at streak ≥4).
+    let streakBadge = "";
+    if (a.streak && a.streak >= 2) {
+      const hc = a.high_conviction ? " hc" : "";
+      const label = a.high_conviction ? `🚀 ${a.streak}日` : `⚡ ${a.streak}日`;
+      streakBadge = `<span class="al-streak${hc}">${label}</span>`;
+    }
+    // Industry-conditional note — appended as a smaller sub-line on
+    // the chip. Currently flags 通信網路 (chip-failure sector for
+    // multiple multi-bull chips) and 光電 (special case for
+    // bearish_div, which is a real signal there).
+    let indNote = "";
+    if (a.industry_note && a.industry_note.text) {
+      const indTone = a.industry_note.warn ? " warn" : " info";
+      indNote = `<span class="al-ind${indTone}">${escapeHtml(a.industry_note.text)}</span>`;
+    }
+    return `<span class="alert-chip ${tone}">${icon}<span>${escapeHtml(a.text || "")}</span>${streakBadge}${indNote}</span>`;
   }).join("");
 }
 

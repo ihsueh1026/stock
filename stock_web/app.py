@@ -1342,6 +1342,74 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
             "text": divergence.get("detail") or "底背離",
         })
 
+    # --- Enrichment: streak count + industry-conditional notes ---
+    # backtest/ studies (see commit log) showed:
+    #
+    # 1. Multi-day chip streaks change forward alpha materially:
+    #    - 反轉 4★+綠 streak 4+ days: +7.5% / 85% (n=13) — strong
+    #      conviction signal vs the single-day base of +2.0% / 57%
+    #    - 反轉 5★+綠 streak 2-3 days: -3.3% / 47% — inverts!
+    #    - 高點 5★+紅 streak 2-3 days: -3.4% / 20% — deepens
+    #    UI surfaces the streak count so the user reads the chip
+    #    with the right intensity.
+    #
+    # 2. Per-industry chip performance varies dramatically:
+    #    - 通信網路業 is a "chip-failure" sector for reversal +
+    #      strong-extension chips (5★+綠 reads -6.7% / 19% win!)
+    #    - 光電業 reversal_4 underperforms (-7.3pp); bearish_div
+    #      OUTPERFORMS (-2.7% vs ~0% pool) — actual bearish signal
+    #    - 半導體 + 電腦及週邊 are the chip-friendly sectors
+    INDUSTRY_CHIP_NOTES: dict[str, dict[str, dict]] = {
+        "通信網路業": {
+            "reversal_inst_confirm_4": {"warn": True,
+                "text": "通信網路業:此 chip 弱於 pool (-3.7% vs +3.0%)"},
+            "reversal_inst_confirm_5": {"warn": True,
+                "text": "通信網路業:此 chip 為反指標 (-6.7% / 19% win)"},
+            "topping_inst_yellow_5": {"warn": True,
+                "text": "通信網路業:此 chip 弱於 pool (-1.4% vs +3.8%)"},
+        },
+        "光電業": {
+            "reversal_inst_confirm_4": {"warn": True,
+                "text": "光電業:此 chip 弱於 pool (-4.4% vs +3.0%)"},
+            "bearish_divergence": {"warn": False,
+                "text": "光電業:頂背離為真空頭訊號 (-2.7% / 39% win,他業近零)"},
+        },
+    }
+    HIGH_CONVICTION_STREAK = {
+        # chip_key → (min_streak, badge text)
+        "reversal_inst_confirm_4": (4, "高確信"),
+    }
+    if history and len(history) >= 2:
+        # Look up industry once for this code (cached, cheap)
+        try:
+            industry = (_company_info(code) or {}).get("industry") if code else None
+        except Exception:
+            industry = None
+        for a in alerts:
+            sk = a.get("stat_key")
+            if not sk:
+                continue
+            # Streak: count consecutive trailing days where this
+            # chip also fired. history[-1] is today (the bar we're
+            # alerting on); walk backwards from history[-2].
+            streak = 1
+            for i in range(len(history) - 2, -1, -1):
+                h = history[i]
+                if sk in (h.get("chip_keys") or []):
+                    streak += 1
+                else:
+                    break
+            if streak >= 2:
+                a["streak"] = streak
+                hc = HIGH_CONVICTION_STREAK.get(sk)
+                if hc and streak >= hc[0]:
+                    a["high_conviction"] = True
+            # Industry-conditional note
+            if industry:
+                note = INDUSTRY_CHIP_NOTES.get(industry, {}).get(sk)
+                if note:
+                    a["industry_note"] = note
+
     return alerts
 
 
