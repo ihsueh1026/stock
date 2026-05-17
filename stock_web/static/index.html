@@ -1159,6 +1159,77 @@
     border: 1px solid rgba(86, 156, 214, 0.3);
     color: #9cd6ff;
   }
+  /* ------ merged news list (MOPS + Yahoo on single timeline) ------ */
+  /* Layout: [source badge] [sentiment chip] [body block]. Source badge
+     letter is the only "from where" cue — single character (M/Y)
+     keeps the row compact, full name in tooltip. */
+  .news-list-merged .n-item {
+    display: grid;
+    grid-template-columns: 22px 44px 1fr;
+    gap: 8px; align-items: start;
+    font-size: 13px; line-height: 1.45;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border-soft);
+  }
+  .news-list-merged .n-item:last-child { border-bottom: none; }
+  .news-list-merged .n-src-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 4px;
+    font-size: 11px; font-weight: 700;
+    margin-top: 2px;
+    cursor: help;
+  }
+  .news-list-merged .n-src-badge.mops {
+    background: rgba(155, 89, 182, 0.18);
+    color: #d896f0;
+    border: 1px solid rgba(155, 89, 182, 0.4);
+  }
+  .news-list-merged .n-src-badge.yahoo {
+    background: rgba(86, 156, 214, 0.18);
+    color: #9cd6ff;
+    border: 1px solid rgba(86, 156, 214, 0.4);
+  }
+  .news-list-merged .n-chip {
+    padding: 1px 6px; border-radius: 999px;
+    font-size: 11px; font-weight: bold;
+    justify-self: start; align-self: start; margin-top: 2px;
+    white-space: nowrap;
+  }
+  .news-list-merged .n-chip.pos { background: rgba(46, 204, 113, .15); color: var(--green); }
+  .news-list-merged .n-chip.neg { background: rgba(231, 76, 60, .15); color: var(--red); }
+  .news-list-merged .n-chip.neu { background: rgba(255, 255, 255, .06); color: var(--text-faint); }
+  .news-list-merged .n-chip.unk { background: rgba(243, 156, 18, .15); color: var(--orange); }
+  .news-list-merged .n-line { font-size: 11px; color: var(--text-faint); margin-bottom: 2px; }
+  .news-list-merged .n-date { font-variant-numeric: tabular-nums; }
+  .news-list-merged .n-title { color: var(--text); word-break: break-word; }
+  .news-list-merged .n-sum {
+    margin-top: 3px; color: var(--text-muted); font-size: 12px;
+    line-height: 1.4;
+  }
+  .news-list-merged .n-am {
+    margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .news-list-merged .n-am-chip {
+    font-size: 10.5px; padding: 1px 6px; border-radius: 6px;
+    background: rgba(86, 156, 214, 0.12);
+    border: 1px solid rgba(86, 156, 214, 0.3);
+    color: #9cd6ff;
+  }
+  /* Reuse the help-line styling from the old news-log-card on the
+     merged card. */
+  .news-card-merged .news-log-help {
+    margin-top: 10px; padding: 8px 10px;
+    border-top: 1px dashed var(--border-soft);
+    border-radius: 0 0 6px 6px;
+    font-size: 11.5px; line-height: 1.55;
+    color: var(--text-faint);
+    background: rgba(86, 156, 214, 0.05);
+  }
+  .news-card-merged .news-log-help b { color: var(--text); }
+  .news-card-merged .news-log-help code {
+    font-size: 10.5px; padding: 1px 4px;
+    background: rgba(255,255,255,0.06); border-radius: 3px;
+    color: var(--text-muted);
+  }
   /* Permanent help line at the bottom of the news_log card so users
      always know how to refresh the manual workflow without hunting
      through CLAUDE.md. Subtle styling — info-tone, small font. */
@@ -1613,30 +1684,21 @@
     </section>
 
     <section class="two-col" id="newsRevCol" hidden>
-      <div class="card news-card">
+      <div class="card news-card news-card-merged">
         <div class="card-title">
-          <span>消息面 <span class="meta news-days">過去 14 天 · MOPS</span></span>
+          <span>消息面 <span class="meta news-days">過去 14 天 · MOPS + Yahoo</span></span>
           <span class="news-head-right">
             <button type="button" class="ghost news-copy-btn" id="newsCopyBtn"
-                    title="複製整理好的清單到剪貼簿,貼到 Claude 分析"
-                    hidden>📋 複製給 Claude 分析</button>
+                    title="複製 MOPS 重訊清單到剪貼簿,貼到 Claude 分析"
+                    hidden>📋 複製 MOPS 給 Claude 分析</button>
             <span class="meta" id="newsMeta"></span>
           </span>
         </div>
-        <div class="news-list" id="newsList">
+        <div class="news-list news-list-merged" id="newsList">
           <div class="news-empty">載入中...</div>
         </div>
-      </div>
-      <div class="card news-log-card" id="newsLogCard" hidden>
-        <div class="card-title">
-          <span>媒體新聞 <span class="meta news-days">過去 14 天 · Yahoo</span></span>
-          <span class="news-head-right">
-            <span class="meta" id="newsLogMeta"></span>
-          </span>
-        </div>
-        <div class="news-list" id="newsLogList"></div>
         <div class="news-log-help">
-          💬 更新方式:對 Claude 對話框說「<b>更新 watchlist 新聞</b>」,Claude 會抓全 watchlist 最新 Yahoo 新聞、自動分類利多/利空/中性,並 dedup 後 append 到 <code>stock_web/news_log.jsonl</code>。每日重複說也 OK — 同日重複呼叫會 smart-skip(不重抓)。也可說「<b>更新 {代號} 新聞</b>」單股強更。
+          💬 Yahoo 更新方式:對 Claude 對話框說「<b>更新 watchlist 新聞</b>」(同日 smart-skip)。也可說「<b>更新 {代號} 新聞</b>」單股強更。MOPS 重訊自動同步,無需手動更新。
         </div>
       </div>
       <div class="card revenue-card">
@@ -2494,10 +2556,9 @@ async function loadStock(code) {
     renderDistance(data.dashboard.distance || []);
     renderCharts(data.rows);
     renderTable(data.rows);
-    // News + revenue + fundamentals load async — they hit MOPS and
-    // shouldn't block the main dashboard render.
+    // News (merged MOPS + Yahoo) + revenue + fundamentals load async
+    // — they hit MOPS/JSONL and shouldn't block the main dashboard render.
     loadNews(data.code);
-    loadNewsLog(data.code);  // Yahoo news from manual news_log.jsonl
     loadRevenue(data.code);
     loadFundamentals(data.code, last.close);
   } catch (e) {
@@ -2505,87 +2566,109 @@ async function loadStock(code) {
   }
 }
 
+// Merged news loader — fetch both MOPS 重訊 (auto, daily-fresh) and
+// Yahoo news_log (manual-via-Claude) in parallel, normalize to a
+// shared schema, sort newest-first, render as a single timeline
+// with a source-type badge on each row.
 async function loadNews(code) {
   const list = document.getElementById("newsList");
   const meta = document.getElementById("newsMeta");
   if (list) list.innerHTML = '<div class="news-empty">載入消息面中...</div>';
   if (meta) meta.textContent = "";
   try {
-    const res = await fetch(`/api/news/${encodeURIComponent(code)}?days=14`);
-    if (!res.ok) {
-      list.innerHTML =
-        `<div class="news-empty">載入失敗:HTTP ${res.status}</div>`;
-      return;
-    }
-    renderNews(await res.json());
+    const [mopsRes, ylogRes] = await Promise.all([
+      fetch(`/api/news/${encodeURIComponent(code)}?days=14`).catch(() => null),
+      fetch(`/api/news_log/${encodeURIComponent(code)}?days=14`).catch(() => null),
+    ]);
+    const mops = mopsRes && mopsRes.ok ? await mopsRes.json() : {items: [], llm_available: false};
+    const ylog = ylogRes && ylogRes.ok ? await ylogRes.json() : {items: [], last_updated: null};
+    renderNewsMerged(mops, ylog);
   } catch (e) {
     list.innerHTML =
       `<div class="news-empty">載入失敗:${escapeHtml(e.message)}</div>`;
   }
 }
 
-// Yahoo Finance news from the manually-curated news_log.jsonl.
-// Auto-hides the whole card when the stock has zero records in the
-// log. Updated through Claude conversation ("更新 watchlist 新聞") so
-// the freshness indicator nudges the user when last_updated drifts.
-async function loadNewsLog(code) {
-  const card = document.getElementById("newsLogCard");
-  const list = document.getElementById("newsLogList");
-  const meta = document.getElementById("newsLogMeta");
-  if (!card || !list) return;
-  try {
-    const res = await fetch(`/api/news_log/${encodeURIComponent(code)}?days=14`);
-    if (!res.ok) {
-      card.hidden = true;
-      return;
-    }
-    const d = await res.json();
-    renderNewsLog(d, card, list, meta);
-  } catch (e) {
-    card.hidden = true;
-  }
-}
+function renderNewsMerged(mopsData, ylogData) {
+  const list = document.getElementById("newsList");
+  const meta = document.getElementById("newsMeta");
+  const copyBtn = document.getElementById("newsCopyBtn");
+  // Normalize both sources to {source_type, date, source_name, title,
+  // sentiment, summary, analyst_mentions}.
+  const mopsItems = (mopsData.items || []).map(it => ({
+    source_type: "mops",
+    date: it.date || "",
+    source_name: "MOPS 重訊",
+    title: it.title || "",
+    sentiment: it.sentiment || "",
+    summary: it.summary || "",
+    analyst_mentions: [],
+  }));
+  const yahooItems = (ylogData.items || []).map(it => ({
+    source_type: "yahoo",
+    date: it.news_date && it.news_date !== "no-date" ? it.news_date : "",
+    source_name: it.source || "",
+    title: it.title || "",
+    sentiment: it.sentiment || "",
+    summary: it.summary && it.summary !== it.title ? it.summary : "",
+    analyst_mentions: it.analyst_mentions || [],
+  }));
+  const merged = [...mopsItems, ...yahooItems];
+  // Sort by date desc, then by source_type (MOPS first when dates tied)
+  merged.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    if (a.source_type !== b.source_type) return a.source_type === "mops" ? -1 : 1;
+    return 0;
+  });
 
-function renderNewsLog(d, card, list, meta) {
-  const items = d.items || [];
-  if (items.length === 0) {
-    // No records for this stock — hide the whole card.
-    card.hidden = true;
-    return;
-  }
-  card.hidden = false;
-  // Freshness indicator — flags when last_updated is stale enough
-  // that the user should consider running "更新 watchlist 新聞".
+  // Meta line: total + per-source counts + Yahoo freshness
   if (meta) {
-    const lu = d.last_updated;
-    let freshTag = "";
-    if (lu) {
+    const parts = [`${merged.length} 則`];
+    parts.push(`MOPS ${mopsItems.length}`);
+    parts.push(`Yahoo ${yahooItems.length}`);
+    if (yahooItems.length > 0 && ylogData.last_updated) {
+      const lu = ylogData.last_updated;
       const luDate = new Date(lu + "T00:00:00");
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const daysAgo = Math.floor((today - luDate) / (1000 * 60 * 60 * 24));
-      if (daysAgo <= 1) freshTag = `📅 ${lu}`;
-      else if (daysAgo <= 7) freshTag = `📅 ${daysAgo} 日前更新`;
-      else freshTag = `⚠ ${daysAgo} 日前更新(建議刷新)`;
+      let freshTag;
+      if (daysAgo <= 1) freshTag = `📅 Yahoo ${lu}`;
+      else if (daysAgo <= 7) freshTag = `📅 Yahoo ${daysAgo} 日前`;
+      else freshTag = `⚠ Yahoo ${daysAgo} 日前(建議刷新)`;
+      parts.push(freshTag);
     }
-    // Sentiment summary count
-    const sentCount = { 利多: 0, 利空: 0, 中性: 0 };
-    items.forEach(it => { sentCount[it.sentiment] = (sentCount[it.sentiment] || 0) + 1; });
-    const sentLine = `${items.length} 則 · 多/空/中 ${sentCount["利多"]}/${sentCount["利空"]}/${sentCount["中性"]}`;
-    meta.textContent = `${sentLine}${freshTag ? " · " + freshTag : ""}`;
+    meta.textContent = parts.join(" · ");
   }
-  // Render each item — sentiment-colored chip on the left, then
-  // date, source, title. Analyst mentions surfaced as small sub-chips.
-  list.innerHTML = items.map(it => {
+
+  // Copy-for-Claude button: only meaningful when MOPS has no LLM
+  // sentiment (so the user pastes raw to Claude for analysis).
+  if (copyBtn) {
+    copyBtn.hidden = mopsData.llm_available || mopsItems.length === 0;
+    copyBtn.classList.remove("copied");
+    copyBtn.textContent = "📋 複製 MOPS 給 Claude 分析";
+    copyBtn.onclick = () => copyNewsForClaude(mopsData, copyBtn);
+  }
+
+  if (merged.length === 0) {
+    list.innerHTML = '<div class="news-empty">過去 14 天無消息</div>';
+    return;
+  }
+
+  list.innerHTML = merged.map(it => {
     const sent = it.sentiment || "";
     const cls = sent === "利多" ? "pos"
               : sent === "利空" ? "neg"
               : sent === "中性" ? "neu"
               : "unk";
-    const dateShort = (it.news_date || "").slice(5).replace("-", "/") || "—";
-    const src = escapeHtml(it.source || "");
+    const sentLabel = sent || "—";
+    const srcBadge = it.source_type === "mops"
+      ? `<span class="n-src-badge mops" title="MOPS 重大訊息(自動同步)">M</span>`
+      : `<span class="n-src-badge yahoo" title="Yahoo Finance(手動更新)">Y</span>`;
+    const dateShort = it.date ? it.date.slice(5).replace("-", "/") : "—";
+    const sourceName = escapeHtml(it.source_name || "");
     const title = escapeHtml(it.title || "");
-    const summary = it.summary && it.summary !== it.title
+    const summary = it.summary
       ? `<div class="n-sum">${escapeHtml(it.summary)}</div>` : "";
     const am = it.analyst_mentions || [];
     const amHtml = am.length
@@ -2598,9 +2681,10 @@ function renderNewsLog(d, card, list, meta) {
       : "";
     return `
       <div class="n-item">
-        <span class="n-chip ${cls}">${escapeHtml(sent || "—")}</span>
+        ${srcBadge}
+        <span class="n-chip ${cls}">${escapeHtml(sentLabel)}</span>
         <div class="n-body">
-          <div class="n-line"><span class="n-date">${dateShort}</span> · <span class="n-src">${src}</span></div>
+          <div class="n-line"><span class="n-date">${dateShort}</span> · <span class="n-src">${sourceName}</span></div>
           <div class="n-title">${title}</div>
           ${summary}
           ${amHtml}
@@ -2624,53 +2708,6 @@ async function loadRevenue(code) {
     body.innerHTML =
       `<div class="news-empty">載入失敗:${escapeHtml(e.message)}</div>`;
   }
-}
-
-function renderNews(data) {
-  const list = document.getElementById("newsList");
-  const meta = document.getElementById("newsMeta");
-  const copyBtn = document.getElementById("newsCopyBtn");
-  const items = data.items || [];
-  // Two modes:
-  //   - llm_available: server has already labelled each item → show tag,
-  //     no copy button (user can read sentiments inline).
-  //   - !llm_available: nothing auto-summarized → expose a button that
-  //     formats the list for the user to paste into Claude Code / Desktop.
-  if (meta) {
-    meta.textContent = data.llm_available ? "AI 摘要" : "";
-  }
-  if (copyBtn) {
-    copyBtn.hidden = data.llm_available || items.length === 0;
-    copyBtn.classList.remove("copied");
-    copyBtn.textContent = "📋 複製給 Claude 分析";
-    copyBtn.onclick = () => copyNewsForClaude(data, copyBtn);
-  }
-  if (!items.length) {
-    list.innerHTML = '<div class="news-empty">過去 14 天無重大訊息</div>';
-    return;
-  }
-  list.innerHTML = items.map(it => {
-    const sent = it.sentiment || "";
-    const cls = sent === "利多" ? "pos"
-              : sent === "利空" ? "neg"
-              : sent === "中性" ? "neu"
-              : "unk";
-    const chipLabel = sent || "—";
-    const chip = `<span class="n-chip ${cls}">${escapeHtml(chipLabel)}</span>`;
-    // Show summary as primary text; fall back to title when LLM unavailable.
-    const primary = it.summary
-      ? escapeHtml(it.summary)
-      : escapeHtml(it.title || "");
-    const showRaw = it.summary && it.title && it.summary !== it.title;
-    const raw = showRaw
-      ? `<span class="n-raw">${escapeHtml(it.title)}</span>` : "";
-    return `
-      <div class="news-item">
-        <span class="n-date">${escapeHtml(it.date || it.roc_date || "")}</span>
-        ${chip}
-        <span class="n-text">${primary}${raw}</span>
-      </div>`;
-  }).join("");
 }
 
 async function loadFundamentals(code, lastClose) {
