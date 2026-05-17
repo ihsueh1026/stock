@@ -18,17 +18,49 @@ TEMPLATE="$SCRIPT_DIR/com.user.claude-news-update.plist.template"
 REPO_PATH="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INSTALL_PATH="$HOME/Library/LaunchAgents/$LABEL.plist"
 
-# Find the claude CLI. Prefer PATH lookup so users on different
-# install methods (brew, npm, cargo) all work without editing.
-CLAUDE_BIN="$(command -v claude || true)"
+# Find the claude CLI. Order:
+#   1. $CLAUDE_BIN env var (user override, highest priority)
+#   2. command -v claude (PATH lookup)
+#   3. Common install locations (brew, npm, etc.) as fallback
+if [[ -n "${CLAUDE_BIN:-}" ]]; then
+  if [[ ! -x "$CLAUDE_BIN" ]]; then
+    print -u2 "ERROR: \$CLAUDE_BIN=$CLAUDE_BIN is not executable."
+    exit 1
+  fi
+else
+  CLAUDE_BIN="$(command -v claude || true)"
+fi
 if [[ -z "$CLAUDE_BIN" ]]; then
-  print -u2 "ERROR: 'claude' CLI not found in PATH."
-  print -u2 "  Install Claude Code first, or set CLAUDE_BIN env var:"
-  print -u2 "    CLAUDE_BIN=/path/to/claude tools/launchd/install.sh"
+  # Fallback: probe common locations so user often doesn't even
+  # need to set $CLAUDE_BIN. Returns first match.
+  for candidate in \
+    "/opt/homebrew/bin/claude" \
+    "/usr/local/bin/claude" \
+    "$HOME/.local/bin/claude" \
+    "$HOME/.npm-global/bin/claude" \
+    "$HOME/.volta/bin/claude" \
+    "$HOME/.nvm/versions/node/*/bin/claude"(N) \
+  ; do
+    if [[ -x "$candidate" ]]; then
+      CLAUDE_BIN="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$CLAUDE_BIN" ]]; then
+  print -u2 "ERROR: 'claude' CLI not found."
+  print -u2 ""
+  print -u2 "Try one of these to locate it manually:"
+  print -u2 "  which claude            # if a login shell has it"
+  print -u2 "  ls ~/.npm-global/bin/   # npm global install"
+  print -u2 "  ls /opt/homebrew/bin/ | grep claude  # Homebrew (M1/M2)"
+  print -u2 "  ls /usr/local/bin/ | grep claude     # Homebrew (Intel)"
+  print -u2 "  find / -name 'claude' -type f 2>/dev/null | head"
+  print -u2 ""
+  print -u2 "Then re-run with explicit path:"
+  print -u2 "  CLAUDE_BIN=/full/path/to/claude tools/launchd/install.sh"
   exit 1
 fi
-# Allow override
-CLAUDE_BIN="${CLAUDE_BIN_OVERRIDE:-$CLAUDE_BIN}"
 
 print "Repo:       $REPO_PATH"
 print "Claude CLI: $CLAUDE_BIN"
