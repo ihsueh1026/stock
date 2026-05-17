@@ -152,13 +152,25 @@ def _chip_events_for_code(rows: list[dict], code: str, market: str
             out["inst_lead"].append(evt["idx"])
 
     # Reversal-quality + 法人=綠
+    # For score==4 we also exclude step5 (持有) yellow events: the
+    # step5-conditioning study showed that 4★+綠 with 持有=yellow
+    # gives -0.13% / 47% (n=53), dragging the chip's median down.
+    # Excluding it lifts 4★ pool from +2.6% to ~+3.1%. The same
+    # exclusion is enforced in `_compute_alerts` so live emission
+    # and historical stats stay in sync. 5★ doesn't need it (its
+    # 持有=yellow bucket has n=9, too thin to filter).
+    HOLD_STEP = 4  # step 5 持有 in steps[]
     for score in (3, 4, 5):
         for idx in find_exact_events(rows, target=score):
             _, steps = _compute_lights(rows, idx, code=code, market=market)
             if not steps or len(steps) <= INST_IDX:
                 continue
-            if steps[INST_IDX]["light"] == "green":
-                out[f"reversal_inst_confirm_{score}"].append(idx)
+            if steps[INST_IDX]["light"] != "green":
+                continue
+            if score == 4 and len(steps) > HOLD_STEP and \
+                    steps[HOLD_STEP]["light"] == "yellow":
+                continue  # exclusion — matches live emission rule
+            out[f"reversal_inst_confirm_{score}"].append(idx)
 
     # 頂背離 (bearish divergence) — first-bar crossings only, reset
     # when divergence drops back to None/bullish. Mirrors the event

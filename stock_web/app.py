@@ -1237,18 +1237,33 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
 
     # --- Reversal-quality + 法人綠 confirmation ---
     # backtest/reversal_quality_study.py on the 50-stock universe:
-    #   - score==5 + 法人=綠  → 40d alpha +1.0% / 54%, bear sub-sample
-    #     +2.84% / 61% — edge concentrated in drawdowns. n=218.
-    #   - score==4 + 法人=綠  → 40d alpha +1.7% / 55%, similar in bear
-    #     (+1.47%). n=428 — the steadiest reversal tier.
-    # score==3 was tried as a chip but collapsed to -0.03% / 50% on the
-    # 50-stock universe (no edge), so we keep the threshold at >=4.
+    #   - score==5 + 法人=綠  → 40d alpha +2.3% / 57%. Bull/bear split
+    #     reveals the edge is bear-only: bull -0.1% (n=81) vs bear
+    #     +4.16% / 67% (n=69). When today is bull regime the chip is
+    #     near-noise; when bear regime it's the strongest reversal cell.
+    #   - score==4 + 法人=綠  → 40d alpha +2.6% / 57%. Bull-leaning
+    #     (bull +3.3% vs bear +1.7%). Step 5 (持有) yellow subset
+    #     is null (-0.1% / 47% on n=53, ~15% of events); excluded
+    #     below so the chip's pool stat stays sharp (~+3.1%).
+    #     n=411 → ~358 after exclusion — the steadiest reversal tier.
+    # score==3 was tried as a chip but collapsed to -0.03% / 50% on
+    # the 50-stock universe (no edge), so we keep the threshold ≥4.
+    HOLD_IDX = 4  # step 5 持有 in steps[]
     if (steps and reversal_quality
             and reversal_quality.get("score") is not None
             and len(steps) > INST_IDX):
         score = reversal_quality["score"]
         inst_light = steps[INST_IDX]["light"]
-        if inst_light == "green" and score >= 4:
+        hold_light = steps[HOLD_IDX]["light"] if len(steps) > HOLD_IDX else None
+        # 4★: also exclude step 5 = yellow (the transitional / noisy
+        # subset that drags the chip's median to zero). 5★ doesn't
+        # show the same pattern — its 持有=yellow bucket is too thin
+        # to matter (n=9, 6%) and reads positive.
+        gate_ok = (
+            inst_light == "green"
+            and (score == 5 or (score == 4 and hold_light != "yellow"))
+        )
+        if gate_ok and score >= 4:
             stars = "★" * score
             # 反轉+法人到位 + 爆量 combo: cross-chip study shows
             # 4★+爆量 → +4.8% / 69% (n=29) vs +1.3% alone; 5★+爆量 →
@@ -1508,14 +1523,21 @@ def _history_lights(full_rows, code, market=MARKET_TWSE, days=HISTORY_DAYS):
         summary = _summary(steps)
         chip_keys: list[str] = []
         INST_STEP = 6  # step 7 法人 index in steps[]
+        HOLD_STEP = 4  # step 5 持有 index in steps[]
         if len(window) >= 20 and steps and len(steps) > INST_STEP:
             inst_light = steps[INST_STEP]["light"]
+            hold_light = steps[HOLD_STEP]["light"] if len(steps) > HOLD_STEP else None
             rq = _reversal_quality(window)
             tq = _topping_quality(window)
             div = _divergence(window) or {}
-            # Reversal chip — exact-score first-cross at 4 or 5 with 法人=綠
+            # Reversal chip — exact-score first-cross at 4 or 5 with 法人=綠.
+            # 4★ additionally excludes 持有=yellow (matches the live
+            # emission rule in _compute_alerts).
             if rq and rq.get("score") in (4, 5) and rq["score"] != prev_rev_score:
-                if inst_light == "green":
+                rev_ok = inst_light == "green" and (
+                    rq["score"] == 5 or hold_light != "yellow"
+                )
+                if rev_ok:
                     chip_keys.append(f"reversal_inst_confirm_{rq['score']}")
             prev_rev_score = rq.get("score") if rq else None
             # Topping chip — exact-score 5 first-cross with 法人=red/yellow
