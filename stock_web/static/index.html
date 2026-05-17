@@ -1636,7 +1636,7 @@
         </div>
         <div class="news-list" id="newsLogList"></div>
         <div class="news-log-help">
-          💬 更新方式:對 Claude 對話框說「<b>更新 watchlist 新聞</b>」,Claude 會抓全 watchlist 最新 Yahoo 新聞、自動分類利多/利空/中性,並 dedup 後 append 到 <code>stock_web/news_log.jsonl</code>。建議週/雙週更新一次。
+          💬 更新方式:對 Claude 對話框說「<b>更新 watchlist 新聞</b>」,Claude 會抓全 watchlist 最新 Yahoo 新聞、自動分類利多/利空/中性,並 dedup 後 append 到 <code>stock_web/news_log.jsonl</code>。每日重複說也 OK — 同日重複呼叫會 smart-skip(不重抓)。也可說「<b>更新 {代號} 新聞</b>」單股強更。
         </div>
       </div>
       <div class="card revenue-card">

@@ -143,8 +143,13 @@ When the user asks for **chip × sentiment analysis**, write an ad-hoc script th
 
 | User says | Action |
 |---|---|
-| 「更新 watchlist 新聞」 | Run the news_log.jsonl refresh flow (see above): read existing log → WebFetch each watchlist code's Yahoo news page → dedup → classify + extract → append. Report new-record count + sentiment delta. |
+| 「更新 watchlist 新聞」 | **Smart-skip first.** Read `stock_web/news_log.jsonl`, find max `fetched_at` ACROSS ALL records. If it equals today's date, SKIP the fetch and just report current state (total records, per-code count, sentiment distribution) — no WebFetch. Otherwise run the full refresh flow: read existing log → WebFetch each watchlist code's Yahoo news page → dedup → classify + extract → append. Report new-record count + sentiment delta. |
+| 「更新 {code} 新聞」 (single code) | Same smart-skip but per-code (compare today vs max fetched_at WHERE code == X). Lets the user force-refresh one stock during a busy news day without re-touching the rest of the watchlist. Verify code is in watchlist or backtest pool before fetching to avoid scope creep. |
+| 「強制更新 watchlist 新聞」 | Bypass smart-skip and run the full flow regardless. Use sparingly — typically only needed when you suspect the morning fetch missed something or want to confirm latest. |
 | 「看 news_log 統計」 | Read `stock_web/news_log.jsonl` and report total records, per-code count, sentiment distribution, source distribution, analyst-mention count, last fetched_at. No fetching, just read+aggregate. |
 | 「跑 chip × sentiment 分析」 | Read `stock_web/news_log.jsonl` + `stock_web/forward_log.jsonl`, join on (code, date ± window), bucket by sentiment, report per-chip × per-sentiment forward alpha cells. If sample is thin (<3 months accumulation, <50 events per cell), report "early — wait for more data" rather than overselling weak signal. |
+
+**Smart-skip rationale** (recorded so future sessions don't over-fetch):
+For chip × sentiment join the relevant timestamp is `news_date` (when the news was published), NOT `fetched_at`. Yahoo Finance keeps ~14 days of news visible, so a weekly fetch captures the same news set as daily fetches. Daily fetching adds operational risk (Yahoo WAF, ritual fatigue, WebFetch quota) with zero analytical benefit. The smart-skip means the user can safely set a daily reminder to say "更新 watchlist 新聞" without burning quota — the workflow becomes idempotent within a trading day.
 
 The news_log panel on the individual stock detail page (`/api/news_log/{code}?days=14`) auto-hides for stocks with zero records and shows a freshness indicator (last_updated date / "X 日前" / "⚠ X 日前(建議刷新)" when >7 days) so the user knows when to trigger the refresh.
