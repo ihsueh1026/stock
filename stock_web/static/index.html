@@ -1083,13 +1083,6 @@
   .news-card .news-head-right {
     display: inline-flex; align-items: center; gap: 8px;
   }
-  .news-card .news-copy-btn {
-    padding: 4px 10px; font-size: 12px;
-    border-radius: 6px;
-  }
-  .news-card .news-copy-btn.copied {
-    color: var(--green); border-color: var(--green);
-  }
   .news-list {
     display: flex; flex-direction: column; gap: 10px;
     max-height: 360px; overflow-y: auto; padding-right: 4px;
@@ -1688,9 +1681,6 @@
         <div class="card-title">
           <span>消息面 <span class="meta news-days">過去 14 天 · MOPS + Yahoo</span></span>
           <span class="news-head-right">
-            <button type="button" class="ghost news-copy-btn" id="newsCopyBtn"
-                    title="複製 MOPS 重訊清單到剪貼簿,貼到 Claude 分析"
-                    hidden>📋 複製 MOPS 給 Claude 分析</button>
             <span class="meta" id="newsMeta"></span>
           </span>
         </div>
@@ -2592,7 +2582,6 @@ async function loadNews(code) {
 function renderNewsMerged(mopsData, ylogData) {
   const list = document.getElementById("newsList");
   const meta = document.getElementById("newsMeta");
-  const copyBtn = document.getElementById("newsCopyBtn");
   // Normalize both sources to {source_type, date, source_name, title,
   // sentiment, summary, analyst_mentions}.
   const mopsItems = (mopsData.items || []).map(it => ({
@@ -2639,15 +2628,6 @@ function renderNewsMerged(mopsData, ylogData) {
       parts.push(freshTag);
     }
     meta.textContent = parts.join(" · ");
-  }
-
-  // Copy-for-Claude button: only meaningful when MOPS has no LLM
-  // sentiment (so the user pastes raw to Claude for analysis).
-  if (copyBtn) {
-    copyBtn.hidden = mopsData.llm_available || mopsItems.length === 0;
-    copyBtn.classList.remove("copied");
-    copyBtn.textContent = "📋 複製 MOPS 給 Claude 分析";
-    copyBtn.onclick = () => copyNewsForClaude(mopsData, copyBtn);
   }
 
   if (merged.length === 0) {
@@ -2964,68 +2944,6 @@ function renderFundamentals(data) {
         <td class="num">${fmtNum(p.book_value_per_share)}</td>
       </tr>`;
   }).join("");
-}
-
-function copyNewsForClaude(data, btn) {
-  // Build a self-contained prompt that the user can paste into any
-  // Claude UI (Claude Code, Desktop, or claude.ai). Includes ticker,
-  // company name (if present), and a clean numbered list of titles.
-  const items = (data.items || []).filter(it => it && it.title);
-  if (!items.length) return;
-  const first = items[0];
-  const name = first.name || "";
-  const code = data.code || first.code || "";
-  const header =
-    `請判讀以下 ${name}(${code}) 最近 ${data.days || 14} 天的重大訊息對股價的可能影響。\n` +
-    `逐則標註「利多 / 利空 / 中性」並用 30 字內的中文一句話摘要,` +
-    `最後再給一個整體市場情緒簡評(3 句以內)。\n`;
-  const lines = items.map((it, i) => {
-    const d = it.date || it.roc_date || "";
-    const t = (it.time || "").slice(0, 5);  // HH:MM is enough
-    return `${i + 1}. ${d} ${t}  ${it.title}`;
-  });
-  const text = header + "\n" + lines.join("\n") + "\n";
-  // Use modern clipboard API; fall back to legacy execCommand on
-  // older browsers (or when over plain HTTP on non-localhost).
-  const done = () => {
-    if (!btn) return;
-    btn.classList.add("copied");
-    btn.textContent = "✓ 已複製,可貼到 Claude";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      btn.textContent = "📋 複製給 Claude 分析";
-    }, 2200);
-  };
-  const fail = (err) => {
-    console.error("clipboard write failed:", err);
-    if (btn) {
-      btn.textContent = "⚠ 複製失敗";
-      setTimeout(() => { btn.textContent = "📋 複製給 Claude 分析"; }, 2200);
-    }
-  };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(() => {
-      legacyCopy(text) ? done() : fail("legacy copy failed");
-    });
-  } else {
-    legacyCopy(text) ? done() : fail("no clipboard API");
-  }
-}
-
-function legacyCopy(text) {
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
-  }
 }
 
 function renderRevenue(data) {
