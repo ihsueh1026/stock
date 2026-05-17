@@ -102,3 +102,39 @@ The trigger logic and cell ranges in `_step_*` functions mirror the formulas in 
 - Summary labels are defined once in `stock_web/app.py` (`SUMMARY_LABELS`) and consumed by `backtest/study.py` (`SIGNAL_DEFS`) and `backtest/exit_rules.py` (`BAD_SUMMARIES`). Renaming a key (e.g. `"strong"`) is a real refactor — find/replace it everywhere. Renaming a label *value* (the emoji/string) is safe but invalidates pooled stats in `backtest/data/_summary_stats.json` keyed by the old string, so re-run [backtest/build_stats.py](backtest/build_stats.py) after.
 - `news_llm.py` must keep failing soft. The MOPS news panel is the only feature that touches a paid API; never make it a hard dependency or fan it out into batch refresh paths.
 - Monthly revenue files (`revenue_*_{YYYYMM}.json`) must keep their non-YYYYMMDD filename so `_purge_old_caches()` skips them. Don't rename to a date-suffixed scheme without teaching the purger.
+
+## Manual-via-Claude workflows
+
+Two log files live at `stock_web/*.jsonl` (both gitignored as per-user runtime data). They accumulate over time and are deliberately not automated, so the user controls when data refreshes.
+
+### `stock_web/forward_log.jsonl` — chip OOS validation
+Captured automatically by `watchlist_chips()` whenever the watchlist is scanned. No user action needed — runs daily as part of the chip-scan flow. Filled by lazy + cron sweep (see `stock_web/forward_log.py`).
+
+### `stock_web/news_log.jsonl` — Yahoo Finance news + sentiment
+Captured manually through a Claude conversation. The user types **「更新 watchlist 新聞」** (or similar) and the assistant:
+
+1. Reads `stock_web/watchlist.json` → list of codes
+2. Reads existing `stock_web/news_log.jsonl` → builds set of `(code, news_date, title)` tuples already logged (dedup)
+3. WebFetches `https://tw.stock.yahoo.com/quote/{code}.TW/news` for each code (or `.TWO` for OTC codes 5xxx/6xxx — verify by checking the stock's market in `_market_for(code)`)
+4. For each article in the response: skip if already in dedup set; otherwise classify sentiment (利多/利空/中性), classify type (媒體報導/公司公告), extract analyst mentions (target prices, rating changes, foreign institutional buy/sell), generate 1-line summary
+5. Append new records to the JSONL (one line per record)
+6. Report to user: how many new records added, sentiment distribution shift
+
+Record schema:
+```json
+{
+  "fetched_at": "YYYY-MM-DD",
+  "news_date": "YYYY-MM-DD" or "no-date",
+  "code": "1234",
+  "source": "鉅亨網" | "中央社財經" | etc,
+  "title": "...",
+  "type": "媒體報導" | "公司公告",
+  "sentiment": "利多" | "利空" | "中性",
+  "summary": "1-line Chinese summary",
+  "analyst_mentions": [{"firm": "...", "target": 495, "action": "上修"}]
+}
+```
+
+Cadence: weekly or biweekly (user-paced). No automation. The intent is to build a multi-month dataset that, joined with `forward_log.jsonl` and historical chip events, will eventually answer "does chip × sentiment combo carry independent edge?"
+
+When the user asks for **chip × sentiment analysis**, write an ad-hoc script that reads both JSONLs, joins on (code, date), buckets by sentiment, and reports forward alpha per chip × sentiment cell. Don't ship UI for it until the sample is large enough (3+ months of accumulation).
