@@ -21,3 +21,10 @@ venv/
 
 # Backtest long-history data — regenerate via `python -m backtest.prefetch`
 backtest/data/
+
+# Per-user runtime accumulation. forward_log captures chip emissions
+# day-of and back-fills alpha at maturity; news_log captures Yahoo
+# Finance article + sentiment annotations (updated manually via Claude
+# conversation). Both are local datasets unique to each user, not source.
+stock_web/forward_log.jsonl
+stock_web/news_log.jsonl
