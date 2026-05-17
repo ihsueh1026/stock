@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template — install.sh substitutes __REPO_PATH__ and __CLAUDE_BIN__,
+  writes the rendered plist to ~/Library/LaunchAgents/, then loads it.
+  Edit this template if you want to change schedule (StartCalendarInterval)
+  or paths; re-run install.sh to apply.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.claude-news-update</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>cd "__REPO_PATH__" &amp;&amp; "__CLAUDE_BIN__" -p "更新 watchlist 新聞"</string>
+  </array>
+
+  <!-- Weekdays 21:00. launchd runs the job at the next opportunity
+       if the Mac was asleep at the scheduled time (unlike cron). -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <!-- Persistent log so cron diagnosis works across reboots.
+       ~/Library/Logs survives logout; /tmp does not. -->
+  <key>StandardOutPath</key>
+  <string>__REPO_PATH__/tools/launchd/news-update.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO_PATH__/tools/launchd/news-update.log</string>
+
+  <!-- Don't restart if it exits (one-shot per schedule trigger). -->
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
