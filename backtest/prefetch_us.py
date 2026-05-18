@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "backtest" / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-DEFAULT_TICKERS = ["^IXIC", "^SOX", "^GSPC", "NVDA", "TSM", "AMD", "AVGO"]
+DEFAULT_TICKERS = ["^DJI", "^IXIC", "^SOX", "^GSPC", "NVDA", "TSM"]
 
 
 def _sanitize_filename(ticker: str) -> str:

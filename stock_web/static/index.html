@@ -274,9 +274,29 @@
   }
   .taiex-bar.bear .tx-label { color: var(--red); font-weight: 600; }
 
-  /* US market strip — sits between the add-card and the today-chips
-     panel, shows yesterday's US close + 1-day change for indices +
-     tech leaders. Read-only; data source is the prefetch_us cache
+  /* Market panel — single card wrapping the US-bar (yesterday's US
+     close strip) + today-chips (TW chip-fire summary). They were
+     two separate cards but read better stacked inside one container
+     since both summarise "what changed since you last looked".
+     Children inside drop their own border/background; a soft
+     divider between them keeps the two sections distinguishable. */
+  .market-panel {
+    margin: 8px 0 14px 0;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .market-panel > .us-bar,
+  .market-panel > .today-chips {
+    background: transparent; border: none;
+    border-radius: 0;
+    margin: 0;
+  }
+  .market-panel > .us-bar + .today-chips {
+    border-top: 1px solid var(--border-soft);
+  }
+  /* US market strip — yesterday's US close + 1-day change for indices
+     + tech leaders. Read-only; data source is the prefetch_us cache
      and the user refreshes manually. */
   .us-bar {
     display: flex; flex-wrap: wrap; align-items: center;
@@ -1634,13 +1654,15 @@
       <span class="hint">首次抓取需 30-60 秒(TWSE 限速)</span>
       <span id="taiexBar" class="taiex-bar" hidden></span>
     </div>
-    <div class="us-bar" id="usBar" hidden></div>
-    <div class="today-chips" id="todayChipsPanel" hidden>
-      <div class="tc-head">
-        <span class="tc-title">今日觸發 chip</span>
-        <span class="tc-meta" id="todayChipsMeta"></span>
+    <div class="market-panel" id="marketPanel" hidden>
+      <div class="us-bar" id="usBar" hidden></div>
+      <div class="today-chips" id="todayChipsPanel" hidden>
+        <div class="tc-head">
+          <span class="tc-title">今日觸發 chip</span>
+          <span class="tc-meta" id="todayChipsMeta"></span>
+        </div>
+        <div class="tc-body" id="todayChipsBody"></div>
       </div>
-      <div class="tc-body" id="todayChipsBody"></div>
     </div>
     <div class="grid" id="watchlistGrid"></div>
   </section>
@@ -2042,12 +2064,14 @@ async function loadTodayChips() {
   const meta = document.getElementById("todayChipsMeta");
   if (!panel || !body) return;
   panel.hidden = false;
+  syncMarketPanelVisibility();
   meta.textContent = "(掃描中...)";
   body.innerHTML = `<div class="tc-empty">掃描 watchlist 中,需數秒...</div>`;
   try {
     const res = await fetch("/api/watchlist/chips");
     if (!res.ok) {
       panel.hidden = true;
+      syncMarketPanelVisibility();
       return;
     }
     const d = await res.json();
@@ -2055,6 +2079,7 @@ async function loadTodayChips() {
   } catch (e) {
     panel.hidden = true;
   }
+  syncMarketPanelVisibility();
 }
 
 // Forward log: pull the OOS validation summary and render the
@@ -2259,6 +2284,18 @@ async function loadTaiexBar() {
   }
 }
 
+// Shared visibility toggle for the merged market panel (US strip +
+// today-chips). Wrapper shows if either child is shown — otherwise
+// the empty card border would dangle.
+function syncMarketPanelVisibility() {
+  const wrap = document.getElementById("marketPanel");
+  if (!wrap) return;
+  const us = document.getElementById("usBar");
+  const tc = document.getElementById("todayChipsPanel");
+  const anyVisible = (us && !us.hidden) || (tc && !tc.hidden);
+  wrap.hidden = !anyVisible;
+}
+
 // US market strip — shows yesterday's US close + 1-day change for
 // indices and tech leaders. Data source is the prefetch_us cache,
 // not auto-refreshed. The strip self-tags as `.stale` if as_of is
@@ -2270,13 +2307,14 @@ async function loadUsBar() {
   if (!bar) return;
   try {
     const res = await fetch("/api/us_market");
-    if (!res.ok) { bar.hidden = true; return; }
+    if (!res.ok) { bar.hidden = true; syncMarketPanelVisibility(); return; }
     const data = await res.json();
-    if (!data.available) { bar.hidden = true; return; }
+    if (!data.available) { bar.hidden = true; syncMarketPanelVisibility(); return; }
     renderUsBar(data);
   } catch (e) {
     bar.hidden = true;
   }
+  syncMarketPanelVisibility();
 }
 
 function renderUsBar(data) {
