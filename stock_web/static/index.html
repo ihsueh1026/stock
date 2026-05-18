@@ -477,27 +477,25 @@
   }
   .wc-change.up { color: var(--price-up); }
   .wc-change.down { color: var(--price-down); }
+  /* (Legacy .wc-asof kept for the empty-card path that previously
+     rendered the date on the price row — currently unused but
+     harmless.) */
   .wc-asof {
     margin-left: auto; color: var(--text-faint);
     font-size: 11px; align-self: center;
     font-variant-numeric: tabular-nums;
   }
-  /* Day-high / day-low row — sits directly under .wc-price, left-flush
-     so it aligns visually with the close price above. Muted typography
-     so it doesn't compete with the main price line. */
-  .wc-hilo {
-    display: flex; align-items: baseline; gap: 12px;
-    margin-top: 4px;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-muted);
-  }
-  .wc-hilo .hl-label {
-    color: var(--text-faint); margin-right: 3px;
+  /* As-of date chip — sits inside .wc-actions, immediately to the
+     left of the ⟳ refresh button. Communicates "snapshot date" of
+     the data this button updates. */
+  .wc-asof-inline {
+    color: var(--text-faint);
     font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    margin-right: 4px;
+    line-height: 1;
+    align-self: center;
   }
-  .wc-hilo .hl-high { color: var(--price-up); }
-  .wc-hilo .hl-low  { color: var(--price-down); }
 
   /* Signal row */
   .wc-signal {
@@ -2421,9 +2419,13 @@ function renderIdBlock(item) {
   `;
 }
 
-function renderWatchActions(code) {
+function renderWatchActions(code, asOf) {
+  const asOfChip = asOf
+    ? `<span class="wc-asof-inline">${asOf}</span>`
+    : "";
   return `
     <div class="wc-actions">
+      ${asOfChip}
       <button class="wc-btn" data-action="refresh" data-code="${code}" title="重新抓取">⟳</button>
       <button class="wc-btn danger" data-action="delete" data-code="${code}" title="從清單移除">✕</button>
     </div>
@@ -2432,12 +2434,17 @@ function renderWatchActions(code) {
 
 function renderWatchCard(item) {
   const code = escapeHtml(item.code);
+  // as-of date used to live on .wc-price (right side). It's now passed
+  // into renderWatchActions so it can sit immediately to the left of
+  // the ⟳ refresh button — communicates "snapshot date for the data
+  // that this button will update".
+  const asOf = item.as_of ? item.as_of.slice(5).replace("-", "/") : "";
   if (!item.cached) {
     return `
       <a class="watch-card empty-card" href="#/stock/${code}" data-card-code="${code}" draggable="true">
         <div class="wc-row1">
           ${renderIdBlock(item)}
-          ${renderWatchActions(code)}
+          ${renderWatchActions(code, "")}
         </div>
         <div class="wc-empty-msg">尚未抓取今日資料<br>點此進入或按 ⟳ 立即抓取</div>
       </a>`;
@@ -2448,8 +2455,6 @@ function renderWatchCard(item) {
   const lights = (item.step_lights || []).map((light, i) =>
     `<span class="step-light ${light}" title="${i + 1}. ${STEP_NAMES[i]}"></span>`
   ).join("");
-  // Format date as MM/DD for compactness
-  const asOf = item.as_of ? item.as_of.slice(5).replace("-", "/") : "";
   // Reversal-quality badge: only shown when ≥2/5 (per backtest, lower
   // scores carry no signal). Compact "★N" form. Wrapped together with
   // step-lights so on narrow cards they wrap as a group.
@@ -2473,18 +2478,12 @@ function renderWatchCard(item) {
     <a class="watch-card ${sm.light}" href="#/stock/${code}" data-card-code="${code}" draggable="true">
       <div class="wc-row1">
         ${renderIdBlock(item)}
-        ${renderWatchActions(code)}
+        ${renderWatchActions(code, asOf)}
       </div>
       <div class="wc-price">
         <span class="wc-close">${fmt(item.close)}</span>
         <span class="wc-change ${chgCls}">${fmtSigned(chg)}%</span>
-        <span class="wc-asof">${asOf}</span>
       </div>
-      ${(item.high != null || item.low != null) ? `
-      <div class="wc-hilo">
-        <span><span class="hl-label">高</span><span class="hl-high">${fmt(item.high)}</span></span>
-        <span><span class="hl-label">低</span><span class="hl-low">${fmt(item.low)}</span></span>
-      </div>` : ""}
       <div class="wc-signal">
         <span class="wc-label ${sm.light}">${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F535}⚪]\s*/u, ""))}</span>
         ${rightGrp}
