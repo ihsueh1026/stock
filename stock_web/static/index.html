@@ -482,6 +482,22 @@
     font-size: 11px; align-self: center;
     font-variant-numeric: tabular-nums;
   }
+  /* Day-high / day-low row — sits directly under .wc-price, left-flush
+     so it aligns visually with the close price above. Muted typography
+     so it doesn't compete with the main price line. */
+  .wc-hilo {
+    display: flex; align-items: baseline; gap: 12px;
+    margin-top: 4px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+  .wc-hilo .hl-label {
+    color: var(--text-faint); margin-right: 3px;
+    font-size: 11px;
+  }
+  .wc-hilo .hl-high { color: var(--price-up); }
+  .wc-hilo .hl-low  { color: var(--price-down); }
 
   /* Signal row */
   .wc-signal {
@@ -2464,6 +2480,11 @@ function renderWatchCard(item) {
         <span class="wc-change ${chgCls}">${fmtSigned(chg)}%</span>
         <span class="wc-asof">${asOf}</span>
       </div>
+      ${(item.high != null || item.low != null) ? `
+      <div class="wc-hilo">
+        <span><span class="hl-label">高</span><span class="hl-high">${fmt(item.high)}</span></span>
+        <span><span class="hl-label">低</span><span class="hl-low">${fmt(item.low)}</span></span>
+      </div>` : ""}
       <div class="wc-signal">
         <span class="wc-label ${sm.light}">${escapeHtml(sm.label.replace(/^[\u{1F7E2}\u{1FA75}\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F535}⚪]\s*/u, ""))}</span>
         ${rightGrp}
