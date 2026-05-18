@@ -2556,6 +2556,81 @@ def get_dividend(code: str, close: Optional[float] = None):
     return {"available": True, **info}
 
 
+_EPS_STATE_STATS_PATH = (Path(__file__).resolve().parent.parent
+                         / "backtest" / "data" / "_eps_state_stats.json")
+_eps_state_stats_cache: dict | None = None
+_eps_state_stats_mtime: float = 0.0
+
+
+def _load_eps_state_stats() -> dict | None:
+    """Read the per-stock EPS-state forward-alpha stats. mtime-cached so
+    `python3 -m backtest.build_eps_state_stats` updates are picked up
+    without restart. Fails soft → endpoint just omits the `history` field."""
+    global _eps_state_stats_cache, _eps_state_stats_mtime
+    if not _EPS_STATE_STATS_PATH.exists():
+        return None
+    try:
+        m = _EPS_STATE_STATS_PATH.stat().st_mtime
+    except OSError:
+        return None
+    if _eps_state_stats_cache is not None and m == _eps_state_stats_mtime:
+        return _eps_state_stats_cache
+    try:
+        with _EPS_STATE_STATS_PATH.open() as f:
+            _eps_state_stats_cache = json.load(f)
+        _eps_state_stats_mtime = m
+    except (OSError, json.JSONDecodeError):
+        return None
+    return _eps_state_stats_cache
+
+
+def _compute_eps_state(periods: list[dict]) -> dict:
+    """Classify a stock's current quarterly EPS YoY pattern.
+
+    'accel' = strictly accelerating YoY over the last 3 YoY-computable
+    quarters (YoY(Q) > YoY(Q-1) > YoY(Q-2)) AND |EPS(Q)| ≥ 0.5.
+    'decel' = strictly decelerating (YoY(Q) < YoY(Q-1) < YoY(Q-2)),
+    no magnitude filter (we want the warning even on small EPS).
+    'neutral' = everything else / insufficient data.
+
+    Backtest (`backtest/eps_acceleration_study.py`) on 47/50 stocks
+    × 5y showed pool-level 60d alpha A3 +0.5% vs Anti -4.0% (5pp
+    spread, 10pp win-rate spread). Per-stock breadth is split ~48/52
+    so this is OBSERVATION-only, not actionable on its own. Returns
+    a dict the frontend can render as a small badge.
+    """
+    yoy_periods = [
+        p for p in (periods or [])
+        if p.get("eps_yoy_pct") is not None and p.get("eps") is not None
+    ]
+    if len(yoy_periods) < 3:
+        return {"kind": "neutral", "label": "資料不足",
+                "magnitude_ok": False,
+                "detail": "近 3 季 YoY 不足以判定加速 / 減速"}
+    last3 = yoy_periods[-3:]
+    yoy = [p["eps_yoy_pct"] for p in last3]
+    eps_now = last3[-1]["eps"]
+    mag_ok = abs(eps_now) >= 0.5
+
+    accel = yoy[2] > yoy[1] > yoy[0]
+    decel = yoy[2] < yoy[1] < yoy[0]
+    detail = (f"YoY {yoy[0]:+.1f}% → {yoy[1]:+.1f}% → "
+              f"{yoy[2]:+.1f}% (EPS={eps_now:.2f})")
+
+    if accel and mag_ok:
+        return {"kind": "accel", "label": "EPS YoY 加速 (3 季)",
+                "magnitude_ok": True, "detail": detail}
+    if accel and not mag_ok:
+        return {"kind": "accel_low",
+                "label": "EPS YoY 加速 (3 季) · |EPS|<0.5",
+                "magnitude_ok": False, "detail": detail}
+    if decel:
+        return {"kind": "decel", "label": "EPS YoY 減速 (3 季)",
+                "magnitude_ok": mag_ok, "detail": detail}
+    return {"kind": "neutral", "label": "EPS YoY 中性",
+            "magnitude_ok": mag_ok, "detail": detail}
+
+
 @app.get("/api/eps_history/{code}")
 def get_eps_history(code: str, years: int = 3):
     """Return multi-year quarterly EPS for trend visualization.
@@ -2563,6 +2638,12 @@ def get_eps_history(code: str, years: int = 3):
     `years` clamps to [1, 5]. Each year requires 4 MOPS round-trips
     if not cached. Cache filenames are `eps_q_{code}_{Y}Q{N}.json`
     (no date suffix → permanent for published quarters).
+
+    Response also includes an `eps_state` block: current YoY pattern
+    classification (accel / decel / neutral) + this code's historical
+    forward-alpha track record at 20/60/120d for accel and decel
+    events (sourced from backtest/data/_eps_state_stats.json,
+    nullable if backtest hasn't been built for this code yet).
     """
     _validate_code(code)
     years = max(1, min(int(years or 3), 5))
@@ -2570,6 +2651,14 @@ def get_eps_history(code: str, years: int = 3):
               or _market_for(code)
               or MARKET_TWSE)
     data = eps_history_fetcher.get_history(code, market=market, years=years)
+    if data.get("available") and data.get("periods"):
+        state = _compute_eps_state(data["periods"])
+        stats = _load_eps_state_stats()
+        history = None
+        if stats and code in stats.get("codes", {}):
+            history = stats["codes"][code]
+        state["history"] = history
+        data["eps_state"] = state
     return data
 
 

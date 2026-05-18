@@ -1096,6 +1096,52 @@
     background: #f5d76e; margin-right: 2px; margin-bottom: 2px;
   }
   .eps-trend-legend .legend-sep { color: var(--text-faint); margin: 0 2px; }
+  /* EPS YoY state badge — observation tag (not actionable signal).
+     Sits between the section title and the legend. Three tones: accel
+     (green), decel (red), neutral (grey). Per-backtest/eps_acceleration_study
+     the underlying signal is weak per-stock (only 48% of codes have
+     positive median 60d alpha on acceleration events), so we present
+     this as INFORMATION not as a buy/sell prompt. */
+  .eps-state-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 500;
+    border: 1px solid transparent;
+    margin: 0 8px; flex: 0 0 auto;
+  }
+  .eps-state-badge.accel {
+    background: rgba(0,200,120,0.10);
+    border-color: rgba(0,200,120,0.40);
+    color: var(--green);
+  }
+  .eps-state-badge.decel {
+    background: rgba(220,80,80,0.10);
+    border-color: rgba(220,80,80,0.40);
+    color: var(--red);
+  }
+  .eps-state-badge.neutral, .eps-state-badge.accel_low {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.18);
+    color: var(--text-muted);
+  }
+  /* Per-stock historical context line — what this code's accel
+     and decel events have actually delivered at 20/60/120d. Quiet
+     muted typography because it's reference data, not a call to act. */
+  .eps-state-history {
+    font-size: 11px; color: var(--text-muted);
+    margin: 0 0 8px 0; padding: 6px 10px;
+    background: rgba(255,255,255,0.03);
+    border-left: 2px solid var(--border-soft);
+    border-radius: 3px;
+    line-height: 1.5;
+  }
+  .eps-state-history .ehs-row { display: block; }
+  .eps-state-history .ehs-acc { color: var(--green); font-weight: 500; }
+  .eps-state-history .ehs-dec { color: var(--red); font-weight: 500; }
+  .eps-state-history .ehs-note {
+    display: block; color: var(--text-faint); margin-top: 3px;
+    font-size: 10px; font-style: italic;
+  }
   .eps-trend-svg svg { width: 100%; height: auto; display: block; }
   .eps-trend-svg .eps-bar { fill: var(--green); opacity: 0.7; }
   .eps-trend-svg .eps-bar.neg { fill: var(--red); }
@@ -1693,12 +1739,14 @@
       <div class="eps-trend" id="epsTrend" hidden>
         <div class="eps-trend-head">
           <span class="eps-trend-title">季 EPS 趨勢</span>
+          <span class="eps-state-badge" id="epsStateBadge" hidden></span>
           <span class="eps-trend-legend">
             <span class="legend-bar"></span>單季 EPS
             <span class="legend-sep">·</span>
             <span class="legend-line"></span>同期 YoY%
           </span>
         </div>
+        <div class="eps-state-history" id="epsStateHistory" hidden></div>
         <div class="eps-trend-svg" id="epsTrendSvg"></div>
       </div>
     </section>
@@ -2813,17 +2861,65 @@ async function loadDividend(code, lastClose) {
 async function loadEpsHistory(code) {
   const wrap = document.getElementById("epsTrend");
   const svgWrap = document.getElementById("epsTrendSvg");
+  const badge = document.getElementById("epsStateBadge");
+  const histLine = document.getElementById("epsStateHistory");
   if (wrap) wrap.hidden = true;
   if (svgWrap) svgWrap.innerHTML = "";
+  if (badge) { badge.hidden = true; badge.className = "eps-state-badge"; badge.textContent = ""; badge.title = ""; }
+  if (histLine) { histLine.hidden = true; histLine.innerHTML = ""; }
   try {
     const res = await fetch(`/api/eps_history/${encodeURIComponent(code)}?years=3`);
     if (!res.ok) return;
     const data = await res.json();
     if (!data.available || !data.periods || data.periods.length === 0) return;
     renderEpsTrend(data);
+    renderEpsState(data.eps_state);
   } catch (e) {
     // Trend is optional; swallow errors.
   }
+}
+
+// EPS state badge + per-stock historical context. The badge classifies
+// the LAST 3 YoY-computable quarters as accel / decel / neutral; the
+// history line shows what THIS code's accel and decel events have
+// historically delivered at 20/60/120d (from backtest/data/
+// _eps_state_stats.json, built by backtest/build_eps_state_stats.py).
+// Both are observation-only — pool breadth in the backtest split 48/52
+// so the signal is NOT a per-stock buy/sell guarantee.
+function renderEpsState(state) {
+  const badge = document.getElementById("epsStateBadge");
+  const histLine = document.getElementById("epsStateHistory");
+  if (!badge || !state) return;
+  badge.className = "eps-state-badge " + (state.kind || "neutral");
+  let icon = "·";
+  if (state.kind === "accel") icon = "▲";
+  else if (state.kind === "decel") icon = "▼";
+  else if (state.kind === "accel_low") icon = "△";
+  badge.textContent = `${icon} ${state.label}`;
+  badge.title = state.detail || "";
+  badge.hidden = false;
+  if (!histLine) return;
+  const hist = state.history;
+  if (!hist || (!hist.accel && !hist.decel)) {
+    // No per-stock history available yet — keep histLine hidden.
+    return;
+  }
+  const fmtCell = (cell) => {
+    if (!cell) return "—";
+    const pct = (cell.alpha_med * 100).toFixed(1);
+    const sign = cell.alpha_med >= 0 ? "+" : "";
+    const winPct = (cell.win_pct * 100).toFixed(0);
+    return `${sign}${pct}% / 勝 ${winPct}% (n=${cell.n})`;
+  };
+  const accRow = hist.accel
+    ? `<span class="ehs-row"><span class="ehs-acc">本檔加速史:</span> 20d ${fmtCell(hist.accel["20"])} · 60d ${fmtCell(hist.accel["60"])} · 120d ${fmtCell(hist.accel["120"])}</span>`
+    : "";
+  const decRow = hist.decel
+    ? `<span class="ehs-row"><span class="ehs-dec">本檔減速史:</span> 20d ${fmtCell(hist.decel["20"])} · 60d ${fmtCell(hist.decel["60"])} · 120d ${fmtCell(hist.decel["120"])}</span>`
+    : "";
+  histLine.innerHTML = accRow + decRow +
+    `<span class="ehs-note">觀察用 — pool 層級加速 vs 減速 60d spread +4.5pp,但 per-stock breadth 約 48% 正向,不構成進場依據</span>`;
+  histLine.hidden = false;
 }
 
 function renderEpsTrend(data) {
