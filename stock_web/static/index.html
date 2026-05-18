@@ -1958,6 +1958,7 @@ function showWatchlist() {
     <div class="field">排序
       <select id="sortMode">
         <option value="manual"${sortMode === "manual" ? " selected" : ""}>手動</option>
+        <option value="light"${sortMode === "light" ? " selected" : ""}>燈號</option>
         <option value="industry"${sortMode === "industry" ? " selected" : ""}>產業</option>
         <option value="code"${sortMode === "code" ? " selected" : ""}>股號</option>
       </select>
@@ -2445,6 +2446,13 @@ function getSortMode() {
   return localStorage.getItem("watchSortMode") || "manual";
 }
 
+// Light-sort ordering — strongest bull state first, gray (uncached)
+// last. Mirrors the SUMMARY_LABELS branching in stock_web/app.py's
+// _summary(). Within the same light, codes with more green steps
+// (summary.passed) come first as a stability tie-breaker for
+// distinguishing 多頭擴張 (passed=7) from 多頭發展 (passed≥3).
+const LIGHT_ORDER = { green: 0, blue: 1, yellow: 2, orange: 3, red: 4, gray: 5 };
+
 function sortWatchItems(items, mode) {
   if (mode === "manual") return items;
   const arr = [...items];
@@ -2459,6 +2467,19 @@ function sortWatchItems(items, mode) {
       if (ai && !bi) return -1;
       const c = ai.localeCompare(bi, "zh-Hant");
       return c !== 0 ? c : a.code.localeCompare(b.code);
+    });
+  } else if (mode === "light") {
+    arr.sort((a, b) => {
+      const al = (a.summary && a.summary.light) || "gray";
+      const bl = (b.summary && b.summary.light) || "gray";
+      const ao = LIGHT_ORDER[al] != null ? LIGHT_ORDER[al] : 9;
+      const bo = LIGHT_ORDER[bl] != null ? LIGHT_ORDER[bl] : 9;
+      if (ao !== bo) return ao - bo;
+      // Within same light, more passed steps = stronger reading
+      const ap = (a.summary && a.summary.passed) || 0;
+      const bp = (b.summary && b.summary.passed) || 0;
+      if (ap !== bp) return bp - ap;
+      return a.code.localeCompare(b.code);
     });
   }
   return arr;
