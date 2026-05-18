@@ -297,23 +297,31 @@
   }
   /* US market strip — yesterday's US close + 1-day change for indices
      + tech leaders. Read-only; data source is the prefetch_us cache
-     and the user refreshes manually. */
+     and the user refreshes manually. Two-line layout mirrors the
+     today-chips block so both halves of the market panel read with
+     the same visual rhythm: title row on top, content row below. */
   .us-bar {
-    display: flex; flex-wrap: wrap; align-items: center;
-    gap: 6px 10px;
-    margin: 8px 0 0 0; padding: 8px 12px;
+    display: flex; flex-direction: column;
+    gap: 6px;
+    margin: 8px 0 0 0; padding: 10px 12px;
     background: var(--card-2); border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 12.5px; color: var(--text-muted);
   }
+  .us-bar .ub-head {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-faint); font-size: 11.5px;
+  }
   .us-bar .ub-title {
-    color: var(--text-faint); font-weight: 600;
-    margin-right: 4px;
+    color: var(--text); font-weight: 500; font-size: 12.5px;
   }
   .us-bar .ub-asof {
     color: var(--text-faint); font-size: 11px;
     font-variant-numeric: tabular-nums;
-    margin-right: 4px;
+  }
+  .us-bar .ub-body {
+    display: flex; flex-wrap: wrap; gap: 6px 10px;
+    align-items: center;
   }
   .us-bar .ub-item {
     display: inline-flex; align-items: baseline; gap: 4px;
@@ -2344,10 +2352,16 @@ function renderUsBar(data) {
       <span class="ub-chg ${chgCls}">${chgTxt}</span>
     </span>`;
   }).join("");
-  bar.innerHTML =
-    `<span class="ub-title">美股昨夜</span>` +
-    (asOfTxt ? `<span class="ub-asof">${asOfTxt}</span>` : "") +
-    items;
+  // Two-line layout mirrors the today-chips block: title + meta on
+  // the head row, items on the body row. Keeps both halves of the
+  // market panel visually parallel.
+  bar.innerHTML = `
+    <div class="ub-head">
+      <span class="ub-title">美股昨夜</span>
+      ${asOfTxt ? `<span class="ub-asof">${asOfTxt}</span>` : ""}
+    </div>
+    <div class="ub-body">${items}</div>
+  `;
   bar.hidden = false;
 }
 
