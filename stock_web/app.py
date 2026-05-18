@@ -2690,7 +2690,8 @@ def get_revenue(code: str):
 
 _US_DATA_DIR = (Path(__file__).resolve().parent.parent
                 / "backtest" / "data")
-US_MARKET_TICKERS = ["^DJI", "^IXIC", "^SOX", "^GSPC", "NVDA", "TSM"]
+US_MARKET_TICKERS = ["^DJI", "^IXIC", "^SOX", "^GSPC",
+                     "NVDA", "TSM", "AAPL", "GOOGL"]
 US_DISPLAY_LABELS = {
     "^DJI":  "Dow",
     "^IXIC": "Nasdaq",
@@ -2698,6 +2699,8 @@ US_DISPLAY_LABELS = {
     "^GSPC": "S&P 500",
     "NVDA":  "NVDA",
     "TSM":   "TSM",
+    "AAPL":  "AAPL",
+    "GOOGL": "GOOGL",
 }
 
 
