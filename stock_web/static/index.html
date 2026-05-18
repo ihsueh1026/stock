@@ -273,6 +273,56 @@
     color: var(--text);
   }
   .taiex-bar.bear .tx-label { color: var(--red); font-weight: 600; }
+
+  /* US market strip — sits between the add-card and the today-chips
+     panel, shows yesterday's US close + 1-day change for indices +
+     tech leaders. Read-only; data source is the prefetch_us cache
+     and the user refreshes manually. */
+  .us-bar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 6px 10px;
+    margin: 8px 0 0 0; padding: 8px 12px;
+    background: var(--card-2); border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12.5px; color: var(--text-muted);
+  }
+  .us-bar .ub-title {
+    color: var(--text-faint); font-weight: 600;
+    margin-right: 4px;
+  }
+  .us-bar .ub-asof {
+    color: var(--text-faint); font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    margin-right: 4px;
+  }
+  .us-bar .ub-item {
+    display: inline-flex; align-items: baseline; gap: 4px;
+    padding: 2px 8px; border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-soft);
+  }
+  .us-bar .ub-label {
+    color: var(--text-faint); font-size: 11px;
+  }
+  .us-bar .ub-close {
+    color: var(--text); font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .us-bar .ub-chg {
+    font-size: 11.5px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .us-bar .ub-chg.up { color: var(--price-up); }
+  .us-bar .ub-chg.down { color: var(--price-down); }
+  /* Stale-data tint — when as_of is older than 1 trading day, the
+     whole bar gets a soft warning border so the user notices to run
+     prefetch_us. */
+  .us-bar.stale { border-color: var(--orange-soft); }
+  .us-bar.stale .ub-asof { color: var(--orange); }
+  @media (max-width: 640px) {
+    .us-bar { font-size: 11.5px; padding: 6px 10px; }
+    .us-bar .ub-item { padding: 1px 6px; }
+  }
   .taiex-bar input {
     width: 90px; padding: 3px 6px; font-size: 12px;
     border: 1px solid var(--border); border-radius: 6px;
@@ -1584,6 +1634,7 @@
       <span class="hint">首次抓取需 30-60 秒(TWSE 限速)</span>
       <span id="taiexBar" class="taiex-bar" hidden></span>
     </div>
+    <div class="us-bar" id="usBar" hidden></div>
     <div class="today-chips" id="todayChipsPanel" hidden>
       <div class="tc-head">
         <span class="tc-title">今日觸發 chip</span>
@@ -1949,6 +2000,7 @@ let _watchItems = null;
 async function loadWatchlist() {
   setStatus("載入監控清單...", false, true);
   loadTaiexBar();
+  loadUsBar();
   loadTodayChips();
   try {
     const res = await fetch("/api/watchlist");
@@ -2205,6 +2257,60 @@ async function loadTaiexBar() {
   } catch (e) {
     bar.hidden = true;
   }
+}
+
+// US market strip — shows yesterday's US close + 1-day change for
+// indices and tech leaders. Data source is the prefetch_us cache,
+// not auto-refreshed. The strip self-tags as `.stale` if as_of is
+// older than ~2 trading days so the user knows when to re-run the
+// prefetch. Asia colour convention: --price-up = red (漲), --price-down
+// = green (跌).
+async function loadUsBar() {
+  const bar = document.getElementById("usBar");
+  if (!bar) return;
+  try {
+    const res = await fetch("/api/us_market");
+    if (!res.ok) { bar.hidden = true; return; }
+    const data = await res.json();
+    if (!data.available) { bar.hidden = true; return; }
+    renderUsBar(data);
+  } catch (e) {
+    bar.hidden = true;
+  }
+}
+
+function renderUsBar(data) {
+  const bar = document.getElementById("usBar");
+  if (!bar) return;
+  bar.classList.remove("stale");
+  // Stale = as_of more than 4 calendar days ago (covers a weekend +
+  // 1 trading day of leeway before nagging the user).
+  if (data.as_of) {
+    const ageMs = Date.now() - new Date(data.as_of).getTime();
+    if (ageMs > 4 * 24 * 3600 * 1000) bar.classList.add("stale");
+  }
+  const asOfTxt = data.as_of
+    ? data.as_of.slice(5).replace("-", "/")
+    : "";
+  const fmtPrice = (v) => v == null ? "—"
+    : Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const items = (data.items || []).map(it => {
+    const chg = it.change_pct;
+    const chgCls = chg == null ? "" : chg > 0 ? "up" : chg < 0 ? "down" : "";
+    const chgTxt = chg == null
+      ? ""
+      : (chg >= 0 ? "+" : "") + chg.toFixed(2) + "%";
+    return `<span class="ub-item" title="${escapeHtml(it.ticker)} · ${asOfTxt}">
+      <span class="ub-label">${escapeHtml(it.label)}</span>
+      <span class="ub-close">${fmtPrice(it.close)}</span>
+      <span class="ub-chg ${chgCls}">${chgTxt}</span>
+    </span>`;
+  }).join("");
+  bar.innerHTML =
+    `<span class="ub-title">美股昨夜</span>` +
+    (asOfTxt ? `<span class="ub-asof">${asOfTxt}</span>` : "") +
+    items;
+  bar.hidden = false;
 }
 
 function renderTaiexBar(data) {

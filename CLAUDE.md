@@ -91,6 +91,7 @@ The trigger logic and cell ranges in `_step_*` functions mirror the formulas in 
 - `GET /api/dividend/{code}?close=...`, `GET /api/industry_pe/{code}?per=...` — yield + per-industry P/E context.
 - `GET /api/revenue/{code}` — monthly revenue series (immutable monthly cache).
 - `GET /api/backtest_stats?label=...` — historical forward-return distribution for the current summary label, served from `backtest/data/_summary_stats.json`. **Stale unless [backtest/build_stats.py](backtest/build_stats.py) is re-run** after collecting fresh per-stock studies.
+- `GET /api/us_market` — latest 1-day close + change% for ^IXIC / ^SOX / ^GSPC / NVDA / TSM / AMD / AVGO. Reads `backtest/data/_us_{TICKER}.json` files written by `python3 -m backtest.prefetch_us` (yfinance-based, ~30s for 7 tickers). **Read-only — staleness is the user's responsibility**: the watchlist UI tags the `us-bar` with `.stale` when as_of is older than 4 calendar days so the user notices to re-run prefetch_us. Currently NOT auto-refreshed by the launchd news job; if daily US freshness becomes important, add `python3 -m backtest.prefetch_us` to the post-news step of the launchd plist (cheap, ~30s).
 
 `/api/watchlist/{code}/refresh` and `/api/watchlist/refresh` are both synchronous. With incremental refresh and warm shared caches (TAIEX/T86/companies), single-stock refresh is a few seconds and a 30-stock batch is typically under a minute. Cold first-ever fetch with no prior cache still hits the 13-month walk (~30–60s per stock).
 

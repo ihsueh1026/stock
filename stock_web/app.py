@@ -2680,6 +2680,85 @@ def get_revenue(code: str):
     return {"available": True, **rev}
 
 
+# --- US market snapshot ------------------------------------------------------
+# Reads the rolling caches written by `python3 -m backtest.prefetch_us`
+# (Yahoo Finance via yfinance) and serves the latest close + 1-day
+# change for indices + tech leaders. Read-only — the cache files are
+# refreshed by the user running prefetch_us periodically (manual today;
+# can be added to the launchd job later if needed). The watchlist UI
+# shows the as_of date so freshness is obvious.
+
+_US_DATA_DIR = (Path(__file__).resolve().parent.parent
+                / "backtest" / "data")
+US_MARKET_TICKERS = ["^IXIC", "^SOX", "^GSPC", "NVDA", "TSM", "AMD", "AVGO"]
+US_DISPLAY_LABELS = {
+    "^IXIC": "Nasdaq",
+    "^SOX":  "SOX",
+    "^GSPC": "S&P 500",
+    "NVDA":  "NVDA",
+    "TSM":   "TSM",
+    "AMD":   "AMD",
+    "AVGO":  "AVGO",
+}
+
+
+def _us_cache_path(ticker: str) -> Path:
+    sane = ticker.replace("^", "").replace("-", "_").replace(".", "_")
+    return _US_DATA_DIR / f"_us_{sane}.json"
+
+
+def _us_snapshot(ticker: str) -> dict | None:
+    """Latest close + prior close + change% from the cached series.
+    Returns None if cache missing or has <2 rows."""
+    p = _us_cache_path(ticker)
+    if not p.exists():
+        return None
+    try:
+        with p.open() as f:
+            d = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    rows = [r for r in (d.get("rows") or [])
+            if r.get("close") is not None]
+    if len(rows) < 2:
+        return None
+    latest = rows[-1]
+    prior = rows[-2]
+    cur = latest["close"]
+    prv = prior["close"]
+    change_pct = ((cur - prv) / prv * 100) if prv else None
+    return {
+        "ticker": ticker,
+        "label": US_DISPLAY_LABELS.get(ticker, ticker),
+        "as_of": latest["date"],
+        "close": cur,
+        "prev_close": prv,
+        "change_pct": change_pct,
+    }
+
+
+@app.get("/api/us_market")
+def get_us_market():
+    """Latest US index + tech leader closes for the watchlist strip.
+
+    Data source: `backtest/data/_us_{TICKER}.json` populated by
+    `python3 -m backtest.prefetch_us` (uses yfinance, ~3 min cold).
+    Read-only here — staleness is the user's responsibility to refresh,
+    surfaced via `as_of` per ticker so the UI can tag old data.
+    """
+    items = [_us_snapshot(t) for t in US_MARKET_TICKERS]
+    items = [it for it in items if it is not None]
+    if not items:
+        return {"available": False}
+    # Use the most common as_of as the panel-level date (handles
+    # the rare case where one ticker's cache is a day older).
+    from collections import Counter
+    as_of_panel = Counter(it["as_of"] for it in items).most_common(1)[0][0]
+    return {"available": True,
+            "as_of": as_of_panel,
+            "items": items}
+
+
 @app.get("/api/watchlist")
 def watchlist_get():
     codes = _load_watchlist()
