@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template — install_watchlist_refresh.sh substitutes __REPO_PATH__ and
+  __PYTHON_BIN__, writes the rendered plist to ~/Library/LaunchAgents/,
+  then loads it. Edit this template to change schedule
+  (StartCalendarInterval) or paths; re-run the install script to apply.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.claude-watchlist-refresh</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>cd "__REPO_PATH__" &amp;&amp; "__PYTHON_BIN__" -m tools.refresh_watchlist</string>
+  </array>
+
+  <!-- Weekdays 07:00 — TWSE opens 09:00, so 2h before market open
+       leaves room for the launchd to fire (auto-catches up if the
+       Mac was asleep, unlike cron) and for the 30-60s sequential
+       TWSE fetch loop to finish before the user opens the browser. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <!-- Persistent log so cron diagnosis works across reboots. -->
+  <key>StandardOutPath</key>
+  <string>__REPO_PATH__/tools/launchd/watchlist-refresh.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO_PATH__/tools/launchd/watchlist-refresh.log</string>
+
+  <!-- Don't restart if it exits (one-shot per schedule trigger). -->
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

@@ -1,8 +1,16 @@
-# Daily news_log refresh via launchd
+# Daily Claude / data jobs via launchd
 
-Schedules the `claude -p "更新 watchlist 新聞"` command to run weekdays
-at 21:00 on this Mac. Uses `launchd` (not `cron`) so it catches up
-after sleep, not just at exact-time fires.
+Two scheduled jobs in this directory, both using `launchd` (not `cron`)
+so they catch up after sleep instead of silently missing:
+
+1. **`com.user.claude-news-update`** — weekdays 21:00 — runs
+   `claude -p "更新 watchlist 新聞"` to refresh the news_log + MOPS
+   sentiment annotations. (Smart-skip: idempotent within a trading day.)
+2. **`com.user.claude-watchlist-refresh`** — weekdays 07:00 — runs
+   `python3 -m tools.refresh_watchlist` to pre-fetch each watchlist
+   code's daily cache + US market caches. No `claude` CLI involved —
+   pure Python, no token cost. By 9am market open the dashboard loads
+   instantly without the cold 30-60s per-stock TWSE fetch.
 
 ## Why launchd over cron
 
@@ -17,46 +25,55 @@ after sleep, not just at exact-time fires.
 
 ```bash
 cd /path/to/Claude
+
+# News update — weekdays 21:00
 tools/launchd/install.sh
+
+# Watchlist pre-fetch — weekdays 07:00
+tools/launchd/install_watchlist_refresh.sh
 ```
 
-The script:
-1. Finds `claude` in your `$PATH` (override with `CLAUDE_BIN_OVERRIDE=...`)
-2. Renders the template with this repo's absolute path + claude binary path
-3. Writes to `~/Library/LaunchAgents/com.user.claude-news-update.plist`
-4. Loads it via `launchctl`
+The scripts:
+1. Find their respective binary (`claude` for news, `python3` for refresh).
+   Override with `CLAUDE_BIN=...` or `PYTHON_BIN=...`.
+2. Render the matching plist template with this repo's absolute path.
+3. Write to `~/Library/LaunchAgents/`.
+4. Load via `launchctl`.
 
-Idempotent — safe to re-run after editing the template or moving the
-repo. It unloads the old version before loading the new one.
+Both are idempotent — safe to re-run after editing a template or
+moving the repo. Each unloads the old version before loading the new
+one.
 
 ## Verify
 
 ```bash
-# Is it installed?
-launchctl list | grep com.user.claude-news-update
+# Are they installed?
+launchctl list | grep com.user.claude-
 
-# Trigger now for testing (won't wait for next schedule)
+# Trigger now for testing (won't wait for the schedule)
 launchctl start com.user.claude-news-update
+launchctl start com.user.claude-watchlist-refresh
 
-# Tail the log
+# Tail logs
 tail -f tools/launchd/news-update.log
+tail -f tools/launchd/watchlist-refresh.log
 ```
 
 ## Schedule
 
-Currently weekdays (Mon-Fri) at 21:00. Edit
-`com.user.claude-news-update.plist.template` `<StartCalendarInterval>`
-block to change, then re-run `install.sh`.
+| Job | When | Why that time |
+|---|---|---|
+| news-update | weekdays 21:00 | 13:30 收盤 + 17:00 MOPS 截止 → 重訊全進來; 18-21 媒體寫盤後解讀 → Yahoo 流動完整; 美股還沒開盤 → 不會被隔夜消息蓋過 |
+| watchlist-refresh | weekdays 07:00 | 前一日 TWSE 資料早已釋出; 2h 前 9:00 開盤,夠時間跑完 30-60s/檔的 TWSE 抓取 (新股冷啟動更久); 美股 cache 同時更新,strip 不會 stale |
 
-Rationale for 21:00:
-- 13:30 收盤 + 17:00 MOPS 截止 → 重訊全進來
-- 18-21 媒體寫盤後解讀 → Yahoo 新聞流動完整
-- 美股還沒開盤 → 不會被隔夜消息蓋過今天的訊息
+Edit the matching `.plist.template` `<StartCalendarInterval>` block to
+change times, then re-run the install script.
 
 ## Uninstall
 
 ```bash
-tools/launchd/uninstall.sh
+tools/launchd/uninstall.sh                       # news update
+tools/launchd/uninstall_watchlist_refresh.sh     # watchlist refresh
 ```
 
 ## Failure mode handling
@@ -73,8 +90,10 @@ weekly trim. Each daily run is typically 30-200 lines.
 
 | File | Tracked | Purpose |
 |---|---|---|
-| `com.user.claude-news-update.plist.template` | ✓ | Schedule + paths template |
-| `install.sh` | ✓ | Render + launchctl load |
-| `uninstall.sh` | ✓ | launchctl unload + remove |
-| `news-update.log` | ✗ (gitignored) | Per-run stdout/stderr |
-| `~/Library/LaunchAgents/com.user.claude-news-update.plist` | n/a (outside repo) | The actual loaded plist |
+| `com.user.claude-news-update.plist.template` | ✓ | News-update schedule + paths |
+| `com.user.claude-watchlist-refresh.plist.template` | ✓ | Watchlist-refresh schedule + paths |
+| `install.sh` / `uninstall.sh` | ✓ | News-update lifecycle |
+| `install_watchlist_refresh.sh` / `uninstall_watchlist_refresh.sh` | ✓ | Watchlist-refresh lifecycle |
+| `news-update.log` | ✗ (gitignored) | Per-run stdout/stderr (news job) |
+| `watchlist-refresh.log` | ✗ (gitignored) | Per-run stdout/stderr (refresh job) |
+| `~/Library/LaunchAgents/com.user.claude-*.plist` | n/a (outside repo) | The actually loaded plists |
