@@ -769,11 +769,38 @@
     border-color: rgba(86,156,214,0.25);
     color: #9cd6ff;
   }
-  /* On narrow screens, let the chip wrap so the industry note
-     doesn't push the chip off-screen. */
+  /* Star-shape note — for 4★ reversal chip, notes the sub-shape
+     identified by which of the 5 conditions is missing. "good"
+     tone (green) for the 起跑型 (missing C1 — lift-off, stronger
+     than baseline); "warn" tone (red) for the 假反轉型 (missing
+     C2 — no prior drop, strongly negative). Visually mirrors
+     .al-ind but with its own colours so the semantic distinction
+     reads at a glance. */
+  .alert-chip .al-shape {
+    margin-left: 6px; padding: 1px 6px;
+    border-radius: 8px; font-size: 10.5px;
+    background: rgba(255,255,255,0.06);
+    border: 1px dashed rgba(255,255,255,0.2);
+    color: var(--text-faint);
+    max-width: 36ch; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .alert-chip .al-shape.good {
+    background: rgba(0,200,120,0.10);
+    border-color: rgba(0,200,120,0.40);
+    color: var(--green);
+  }
+  .alert-chip .al-shape.warn {
+    background: rgba(220,80,80,0.10);
+    border-color: rgba(220,80,80,0.40);
+    color: var(--red);
+  }
+  /* On narrow screens, let the chip wrap so the industry / shape
+     notes don't push the chip off-screen. */
   @media (max-width: 640px) {
     .alert-chip { flex-wrap: wrap; }
     .alert-chip .al-ind { white-space: normal; max-width: none; }
+    .alert-chip .al-shape { white-space: normal; max-width: none; }
   }
   /* Shared border/padding lives on the outer wrapper so reversal +
      topping panels stack cleanly without double-bordering when both
@@ -3274,7 +3301,22 @@ function renderAlerts(alerts) {
       const indTone = a.industry_note.warn ? " warn" : " info";
       indNote = `<span class="al-ind${indTone}">${escapeHtml(a.industry_note.text)}</span>`;
     }
-    return `<span class="alert-chip ${tone}">${icon}<span>${escapeHtml(a.text || "")}</span>${streakBadge}${indNote}</span>`;
+    // Star-shape note — for 4★ reversal chip only, identifies the
+    // sub-shape (which of the 5 conditions is the missing one).
+    // 起跑型 (missing C1 = 近20日低) shows green/good tone since the
+    // 50-stock backtest showed +7.7% / 71% at 40d (vs +3.0% baseline).
+    // 假反轉型 (missing C2 = 前期跌幅 ≥7.5%) shows red/warn tone since
+    // the same backtest showed -5.2% / 14% — rare but consistently
+    // negative ("oversold inside tight consolidation, nothing to
+    // revert from"). C3/C4/C5 missing slots are near baseline,
+    // intentionally not annotated.
+    let shapeNote = "";
+    if (a.shape_note && a.shape_note.text) {
+      const sTone = a.shape_note.tone === "warn" ? " warn"
+                  : a.shape_note.tone === "good" ? " good" : "";
+      shapeNote = `<span class="al-shape${sTone}">${escapeHtml(a.shape_note.text)}</span>`;
+    }
+    return `<span class="alert-chip ${tone}">${icon}<span>${escapeHtml(a.text || "")}</span>${streakBadge}${indNote}${shapeNote}</span>`;
   }).join("");
 }
 

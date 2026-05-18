@@ -1269,7 +1269,7 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
             # 4★+爆量 → +4.8% / 69% (n=29) vs +1.3% alone; 5★+爆量 →
             # +1.8% / 60% (n=30) vs +0.8%. Tag and prefix the chip.
             amp = volume_burst_active
-            alerts.append({
+            chip = {
                 "kind": "reversal_inst_confirm",
                 "icon": "🔥" if amp else "✨",
                 "tone": "info",
@@ -1277,7 +1277,38 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                          if amp else f"反轉 {stars}+法人到位"),
                 "stat_key": f"reversal_inst_confirm_{score}",
                 "combo_amp": "volume_burst" if amp else None,
-            })
+            }
+            # 4★ sub-shape annotation: which of the 5 conditions is
+            # missing materially shifts forward alpha.
+            # backtest/reversal_4star_missing_study.py on 50-stock
+            # universe (n=302 qualifying events):
+            #   missing C1 (not at 20d low)  → 40d +7.74% / 71% (n=34)
+            #   missing C2 (no prior drop)   → 40d -5.21% / 14% (n= 7)
+            #   missing C3 (K not <20)       → 40d +2.04% / 55% (n=135)
+            #   missing C4 (RSI6 not <35)    → 40d +18.6% / 88% (n=  8)
+            #   missing C5 (vol not ≥1.0x)   → 40d +2.58% / 61% (n=116)
+            # vs baseline +2.99% / 59%. Only C1-miss (起跑型) and
+            # C2-miss (假反轉) have both meaningful sample (>20) and
+            # large deviation; C4-miss looks huge but n=8 is too thin
+            # to ship as a callout. C3 and C5 are near baseline.
+            if score == 4 and reversal_quality.get("checks"):
+                checks_ = reversal_quality["checks"]
+                missing_idx = next(
+                    (i for i, c in enumerate(checks_) if not c["passed"]),
+                    None)
+                if missing_idx == 0:
+                    chip["shape_note"] = {
+                        "tone": "good",
+                        "text": "起跑型 (價已抬離20日低): "
+                                "40d +7.7% / 71% (n=34)",
+                    }
+                elif missing_idx == 1:
+                    chip["shape_note"] = {
+                        "tone": "warn",
+                        "text": "假反轉型 (前期未真跌): "
+                                "40d -5.2% / 14% (n=7,稀有)",
+                    }
+            alerts.append(chip)
 
     # --- Topping-quality conditional chips ---
     # backtest/topping_quality_study.py on the 50-stock universe

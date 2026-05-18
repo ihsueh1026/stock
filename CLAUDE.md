@@ -78,6 +78,8 @@ The trigger logic and cell ranges in `_step_*` functions mirror the formulas in 
 
 **Divergence + alerts (layered on top of the 7 lights, not gates)**: `_divergence()` compares the last 5 bars to the prior 10 looking for price/RSI6 disagreement; a bearish (頂背離) result soft-downgrades step 3 green→yellow, and either direction surfaces as an alert chip. `_compute_alerts()` emits chips for 爆量 / 量縮 / 法人連 N 日同向 / 背離 — these annotate the current view only and don't recompute over the history strip. Alerts respect `cached_only` so they can be evaluated without fanning out T86 fetches.
 
+**Chip sub-shape annotations**: some chips carry small sub-labels alongside the main text — `streak` badge (consecutive-day count, with 🚀 高確信 for known sweet-spots), `industry_note` (per-industry chip-failure / amplification warnings, see `INDUSTRY_CHIP_NOTES` in `_compute_alerts`), and `shape_note` (for `reversal_inst_confirm_4` only: identifies WHICH of the 5 reversal-quality conditions is missing, since 4★ means exactly one is). Sub-shapes worth annotating per [backtest/reversal_4star_missing_study.py](backtest/reversal_4star_missing_study.py) on the 50-stock universe (n=302 qualifying events, baseline +2.99% / 59% at 40d): **missing C1** (近20日低) → 起跑型, 40d +7.74% / 71% (n=34) — green/good tone; **missing C2** (前期跌幅 ≥7.5%) → 假反轉型, 40d −5.21% / 14% (n=7, rare but consistent across horizons) — red/warn tone. C3/C4/C5 missing slots are near baseline and intentionally NOT annotated to avoid label-noise. CSS class `.al-shape` mirrors `.al-ind` visually with its own colour palette.
+
 ### API surface (all under `/api/`)
 
 - `GET /api/stock/{code}?rows=N` — full series + dashboard (rows clamped 1..500).
