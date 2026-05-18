@@ -2692,7 +2692,7 @@ _US_DATA_DIR = (Path(__file__).resolve().parent.parent
                 / "backtest" / "data")
 US_MARKET_TICKERS = ["^DJI", "^IXIC", "^SOX", "^GSPC", "NVDA", "TSM"]
 US_DISPLAY_LABELS = {
-    "^DJI":  "道瓊",
+    "^DJI":  "Dow",
     "^IXIC": "Nasdaq",
     "^SOX":  "SOX",
     "^GSPC": "S&P 500",
