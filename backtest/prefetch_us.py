@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "backtest" / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-DEFAULT_TICKERS = ["^DJI", "^IXIC", "^SOX", "^GSPC",
+DEFAULT_TICKERS = ["^DJI", "^IXIC", "^SOX",
                    "NVDA", "TSM", "AAPL", "GOOGL"]
 
 
