@@ -947,6 +947,17 @@
   .hero-price .change.up { color: var(--price-up); }
   .hero-price .change.down { color: var(--price-down); }
   .hero-price .meta-line { color: var(--text-muted); font-size: 12.5px; display: flex; gap: 12px; }
+  /* High / low colours in the detail-page price meta line — follows
+     the same Asia convention as .wc-change above (red = up, green
+     = down). Inline spans inside #priceMeta. */
+  .hero-price .meta-line .pm-hi {
+    color: var(--price-up); font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-price .meta-line .pm-lo {
+    color: var(--price-down); font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
 
   /* 7-step table */
   .steps-card { padding: 14px 0 0; overflow: hidden; }
@@ -3157,8 +3168,11 @@ function renderHero(dashboard, lastRow, code, info) {
   ce.textContent = chg != null ? `${fmtSigned(chg)}%` : "";
   const sigmaTxt = dashboard.sigma != null
     ? `σ=${(dashboard.sigma * 100).toFixed(2)}%` : "";
+  // Colour 最高 / 最低 — Asia convention (already used across this
+  // codebase): --price-up = red (bull / 漲), --price-down = green
+  // (bear / 跌). High → red, low → green.
   document.getElementById("priceMeta").innerHTML = `
-    <span>最高 ${fmt(lastRow.high)} / 最低 ${fmt(lastRow.low)}</span>
+    <span>最高 <span class="pm-hi">${fmt(lastRow.high)}</span> / 最低 <span class="pm-lo">${fmt(lastRow.low)}</span></span>
     <span>量 ${fmtInt(lastRow.lots)} 張</span>
     ${sigmaTxt ? `<span>${sigmaTxt}</span>` : ""}
   `;
