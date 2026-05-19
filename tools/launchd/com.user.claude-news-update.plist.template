@@ -15,7 +15,7 @@
   <array>
     <string>/bin/zsh</string>
     <string>-c</string>
-    <string>cd "__REPO_PATH__" &amp;&amp; "__CLAUDE_BIN__" -p "更新 watchlist 新聞"</string>
+    <string>cd "__REPO_PATH__" &amp;&amp; "__CLAUDE_BIN__" -p --model claude-haiku-4-5 "更新 watchlist 新聞"</string>
   </array>
 
   <!-- Weekdays 21:00. launchd runs the job at the next opportunity
