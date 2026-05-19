@@ -1146,6 +1146,52 @@
   .zones-note { color: var(--text-muted); font-size: 12.5px; padding: 6px 0 12px; line-height: 1.6; }
 
   /* Fundamentals (annual EPS / margins) — full-width table card */
+  /* 籌碼面 (margin / SBL) panel — 4-cell observation grid sits between
+     the EPS trend and the news/revenue two-col on the detail page.
+     Pure information surface — no signal claim. Numbers are 張 (lots),
+     5-day change in absolute lots + %. Asia colour convention: value
+     went up → red, down → green (consistent with .wc-change). */
+  .margin-sbl-card { margin-top: 14px; padding: 12px 16px; }
+  .ms-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .ms-cell {
+    background: var(--card-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .ms-label {
+    color: var(--text-faint); font-size: 11px;
+  }
+  .ms-value {
+    color: var(--text); font-size: 18px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+  .ms-change {
+    font-size: 11.5px; font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    min-height: 14px;
+  }
+  .ms-change.up { color: var(--price-up); }
+  .ms-change.down { color: var(--price-down); }
+  .ms-sub {
+    font-size: 10.5px; color: var(--text-faint);
+    min-height: 12px;
+  }
+  .ms-note {
+    margin-top: 10px; font-size: 10.5px; color: var(--text-faint);
+    font-style: italic;
+  }
+  @media (max-width: 720px) {
+    .ms-grid { grid-template-columns: repeat(2, 1fr); }
+  }
   .fundamentals-card { margin-top: 0; }
   .fundamentals-card .fund-source {
     font-weight: normal; font-size: 11px; margin-left: 6px;
@@ -1869,6 +1915,39 @@
         <div class="eps-state-history" id="epsStateHistory" hidden></div>
         <div class="eps-trend-svg" id="epsTrendSvg"></div>
       </div>
+    </section>
+
+    <section class="card margin-sbl-card" id="marginSblCard" hidden>
+      <div class="card-title">
+        <span>籌碼面 <span class="meta" id="marginSblMeta"></span></span>
+      </div>
+      <div class="ms-grid">
+        <div class="ms-cell">
+          <div class="ms-label">融資餘額</div>
+          <div class="ms-value" id="msF">—</div>
+          <div class="ms-change" id="msFChg"></div>
+          <div class="ms-sub" id="msFSub"></div>
+        </div>
+        <div class="ms-cell">
+          <div class="ms-label">融券餘額</div>
+          <div class="ms-value" id="msS">—</div>
+          <div class="ms-change" id="msSChg"></div>
+          <div class="ms-sub"></div>
+        </div>
+        <div class="ms-cell">
+          <div class="ms-label">借券餘額</div>
+          <div class="ms-value" id="msSbl">—</div>
+          <div class="ms-change" id="msSblChg"></div>
+          <div class="ms-sub" id="msSblSub">法人放空訊號</div>
+        </div>
+        <div class="ms-cell">
+          <div class="ms-label">資券比</div>
+          <div class="ms-value" id="msRatio">—</div>
+          <div class="ms-change"></div>
+          <div class="ms-sub">融資 ÷ 融券</div>
+        </div>
+      </div>
+      <div class="ms-note">觀察用 · 單位 = 張 · 變化 = 與 5 日前比較</div>
     </section>
 
     <section class="two-col" id="newsRevCol" hidden>
@@ -3091,6 +3170,81 @@ async function loadFundamentals(code, lastClose) {
   // it off here. Don't await — let it stream in.
   loadEpsHistory(code);
   loadDividend(code, lastClose);
+  loadMarginSbl(code);
+}
+
+// 籌碼面 panel — 融資 / 融券 / 借券 / 資券比 observation card. Pure
+// information, no signal claim. Hidden if /api/margin_sbl returns
+// available=false (OTC code, or TWSE code missing from today's dump).
+// Asia colour convention: value went up → red, down → green.
+async function loadMarginSbl(code) {
+  const card = document.getElementById("marginSblCard");
+  if (!card) return;
+  card.hidden = true;
+  try {
+    const res = await fetch(`/api/margin_sbl/${encodeURIComponent(code)}?days=10`);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.available || !d.snapshot) return;
+    renderMarginSbl(d);
+    card.hidden = false;
+  } catch (e) {
+    // Optional surface; swallow errors.
+  }
+}
+
+function renderMarginSbl(d) {
+  const snap = d.snapshot;
+  const meta = document.getElementById("marginSblMeta");
+  if (meta) {
+    const dateTxt = d.latest_date ? d.latest_date.slice(5).replace("-", "/") : "";
+    const nDays = (d.history || []).length;
+    meta.textContent = dateTxt ? `${dateTxt} · ${nDays} 日歷史` : "";
+  }
+  const fmt = (v) => v == null
+    ? "—"
+    : Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  // Change cell: "±N (±X.X%)" with Asia colour by sign.
+  const setChange = (id, absVal, pctVal) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove("up", "down");
+    if (absVal == null) {
+      el.textContent = "";
+      return;
+    }
+    const sign = absVal > 0 ? "+" : (absVal < 0 ? "" : "±");
+    const pctTxt = pctVal != null
+      ? ` (${absVal > 0 ? "+" : ""}${(pctVal * 100).toFixed(1)}%)`
+      : "";
+    el.textContent = `${sign}${Number(absVal).toLocaleString("en-US")}${pctTxt}`;
+    if (absVal > 0) el.classList.add("up");
+    else if (absVal < 0) el.classList.add("down");
+  };
+
+  // 融資
+  document.getElementById("msF").textContent = fmt(snap.f.balance_today);
+  setChange("msFChg", snap.f.change_5d_abs, snap.f.change_5d_pct);
+  const usage = snap.f.usage_pct;
+  document.getElementById("msFSub").textContent = usage != null
+    ? `使用率 ${usage.toFixed(2)}%`
+    : "";
+
+  // 融券
+  document.getElementById("msS").textContent = fmt(snap.s.balance_today);
+  setChange("msSChg", snap.s.change_5d_abs, snap.s.change_5d_pct);
+
+  // 借券
+  document.getElementById("msSbl").textContent = fmt(snap.sbl.balance_today);
+  setChange("msSblChg", snap.sbl.change_5d_abs, snap.sbl.change_5d_pct);
+
+  // 資券比 — special case, just a ratio with no time-series change
+  const ratio = snap.long_short_ratio;
+  document.getElementById("msRatio").textContent = ratio == null
+    ? "—"
+    : (ratio >= 100
+        ? Math.round(ratio).toLocaleString("en-US")
+        : ratio.toFixed(2));
 }
 
 async function loadIndustryPe(code, myPer) {

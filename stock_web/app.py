@@ -37,6 +37,7 @@ from stock_web import (  # noqa: E402
     eps_history_fetcher,
     dividend_fetcher,
     industry_pe_fetcher,
+    margin_sbl_fetcher,
     forward_log,
 )
 
@@ -2678,6 +2679,37 @@ def get_revenue(code: str):
     if rev is None:
         return {"code": code, "available": False, "market": market}
     return {"available": True, **rev}
+
+
+@app.get("/api/margin_sbl/{code}")
+def get_margin_sbl(code: str, days: int = 10):
+    """Per-stock 融資/融券/借券 snapshot + N-day history.
+
+    Data sources (TWSE only for v1, OTC not yet supported):
+      * MI_MARGN — per-stock 融資 + 融券 today vs prior day (in lots)
+      * TWT93U   — per-stock 借券 today vs prior day (converted lots)
+
+    Both are cached per trading day under `stock_web/cache/`. The
+    fetcher OPPORTUNISTICALLY pulls the most-recent trading day if
+    it isn't cached (one request per source), but historical days
+    come from cache only — never fans out N parallel network calls.
+
+    Backfill the history caches by running this endpoint on each
+    code daily (the morning launchd job already does this via
+    refresh_watchlist if we add it there); see CLAUDE.md.
+
+    `days` clamps to [3, 30]. Returns `{available: false}` for OTC
+    codes or codes missing from today's TWSE dumps.
+    """
+    _validate_code(code)
+    # OTC sources not yet implemented — bail out cleanly.
+    market = (_stock_cache_market(code)
+              or _market_for(code)
+              or MARKET_TWSE)
+    if market != MARKET_TWSE:
+        return {"available": False, "code": code, "market": market,
+                "reason": "OTC margin/SBL not yet supported"}
+    return margin_sbl_fetcher.get_for_code(code, days=days)
 
 
 # --- US market snapshot ------------------------------------------------------

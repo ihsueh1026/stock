@@ -39,6 +39,32 @@ from stock_web.app import (  # noqa: E402
 )
 
 
+def _refresh_margin_sbl() -> None:
+    """Pre-fetch today's whole-market 融資/融券 + 借券 dumps so the
+    detail-page 籌碼面 panel has at least 1 day of history when the
+    user clicks into any stock. Both fetchers are idempotent (skip
+    if cache exists) so re-runs cost nothing."""
+    try:
+        from stock_web import margin_sbl_fetcher as msbl
+    except ImportError as e:
+        print(f"  (Margin/SBL refresh skipped — import failed: {e})",
+              flush=True)
+        return
+    from datetime import date
+    iso = date.today().isoformat()
+    print(f"\nRefreshing margin + SBL caches for {iso} ...", flush=True)
+    try:
+        m = msbl.fetch_margin(iso)
+        print(f"  margin: {len(m)} codes", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  margin: ERROR {e}", flush=True)
+    try:
+        s = msbl.fetch_sbl(iso)
+        print(f"  sbl: {len(s)} codes", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  sbl: ERROR {e}", flush=True)
+
+
 def _refresh_us_market() -> None:
     """Pre-fetch latest US closes so the watchlist's 美股昨夜 strip is
     fresh in the morning. Cheap (~30s for 7 tickers via yfinance) and
@@ -96,6 +122,7 @@ def main() -> int:
         for c, e in failed:
             print(f"  FAILED {c}: {e}", flush=True)
 
+    _refresh_margin_sbl()
     _refresh_us_market()
     return 1 if failed else 0
 
