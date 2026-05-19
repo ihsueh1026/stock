@@ -2787,11 +2787,14 @@ async function refreshOne(code) {
 }
 
 async function refreshAll() {
-  if (!confirm('確定全部重新抓取？\n將依序更新所有個股資料。')) return;
+  if (!confirm('確定全部重新抓取？\n將依序更新所有個股資料 + 美股 cache。')) return;
   const btn = document.getElementById("refreshAllBtn");
   btn.disabled = true;
   setStatus("批次更新全部個股中...", false, true);
+  let twseMsg = "", usMsg = "";
   try {
+    // 1. TWSE per-stock refresh (the heavy step — sequential by code,
+    //    typically 30s-2min depending on incremental vs cold)
     const res = await fetch("/api/watchlist/refresh", { method: "POST" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -2800,15 +2803,38 @@ async function refreshAll() {
     }
     const data = await res.json();
     const fail = (data.failed || []).length;
-    if (fail > 0) {
-      setStatus(`更新完成:${data.updated} 成功 / ${fail} 失敗`, true);
-    } else {
-      setStatus(`更新完成:${data.updated} 支`, false);
+    twseMsg = fail > 0
+      ? `個股 ${data.updated} 成功 / ${fail} 失敗`
+      : `個股 ${data.updated} 支`;
+
+    // 2. US market refresh — fires AFTER stocks because it depends on
+    //    yfinance (slower, separate network path) and we want the
+    //    watchlist re-render to happen with fresh stock data even if
+    //    US fails.
+    setStatus(`${twseMsg} · 更新美股中...`, false, true);
+    try {
+      const usRes = await fetch("/api/us_market/refresh", { method: "POST" });
+      const usData = await usRes.json().catch(() => ({}));
+      if (usData.ok) {
+        const usFail = (usData.failed || []).length;
+        usMsg = usFail > 0
+          ? `美股 ${usData.updated} / ${usFail} 失敗`
+          : `美股 ${usData.updated} ticker`;
+      } else {
+        usMsg = `美股更新失敗:${usData.error || "unknown"}`;
+      }
+    } catch (e) {
+      usMsg = `美股更新錯誤:${e.message}`;
     }
+
+    const combined = `${twseMsg} · ${usMsg}`;
+    setStatus(`更新完成 — ${combined}`, fail > 0);
   } catch (e) {
     setStatus(`錯誤:${e.message}`, true);
   } finally {
     btn.disabled = false;
+    // loadWatchlist re-fetches stock items AND triggers loadUsBar()
+    // internally, so the US strip gets the fresh data automatically.
     await loadWatchlist();
   }
 }
