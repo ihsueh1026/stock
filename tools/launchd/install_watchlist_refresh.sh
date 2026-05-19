@@ -65,6 +65,37 @@ if ! "$PYTHON_BIN" -c "import sys; sys.path.insert(0, '$REPO_PATH'); from stock_
   print -u2 "  Continuing anyway — fix this before relying on the schedule."
 fi
 
+# macOS Full Disk Access reminder when repo is under ~/Library/CloudStorage
+# (OneDrive, iCloud, etc.). launchd spawns python3 without the FDA the
+# user's interactive Terminal has, so the morning job will fail with
+# `Operation not permitted` even though manual runs work. The fix is
+# a one-time TCC grant. We detect this case at install time so the
+# user doesn't have to debug it on day 2.
+case "$REPO_PATH" in
+  *Library/CloudStorage/*)
+    print ""
+    print "──────────────────────────────────────────────────────────────"
+    print "⚠  Repo is under ~/Library/CloudStorage/ (OneDrive/iCloud)."
+    print ""
+    print "macOS TCC protects this location. launchd-spawned python3"
+    print "needs Full Disk Access to read the repo, or the morning job"
+    print "will fail with 'Operation not permitted'."
+    print ""
+    print "One-time setup:"
+    print "  1. Open System Settings → Privacy & Security → Full Disk Access"
+    print "  2. Click +, navigate to:"
+    print "       $PYTHON_BIN"
+    print "  3. Add it, toggle the switch ON."
+    print "  4. Re-run this install script (or unload/reload the job)."
+    print ""
+    print "Verify after grant:"
+    print "  launchctl start com.user.claude-watchlist-refresh"
+    print "  tail tools/launchd/watchlist-refresh.log"
+    print "──────────────────────────────────────────────────────────────"
+    print ""
+    ;;
+esac
+
 print "Repo:       $REPO_PATH"
 print "Python:     $PYTHON_BIN"
 print "Target:     $INSTALL_PATH"

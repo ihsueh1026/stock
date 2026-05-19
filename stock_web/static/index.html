@@ -319,6 +319,20 @@
     color: var(--text-faint); font-size: 11px;
     font-variant-numeric: tabular-nums;
   }
+  .us-bar .ub-refresh {
+    margin-left: auto;
+    background: transparent; color: var(--text-faint);
+    border: 1px solid var(--border-soft); border-radius: 4px;
+    padding: 1px 6px; font-size: 11px; cursor: pointer;
+    line-height: 1; font-family: inherit;
+  }
+  .us-bar .ub-refresh:hover {
+    color: var(--text); border-color: var(--border);
+    background: rgba(255,255,255,0.04);
+  }
+  .us-bar .ub-refresh:disabled {
+    cursor: default; opacity: 0.6;
+  }
   .us-bar .ub-body {
     display: flex; flex-wrap: wrap; gap: 6px 10px;
     align-items: center;
@@ -2355,15 +2369,53 @@ function renderUsBar(data) {
   }).join("");
   // Two-line layout mirrors the today-chips block: title + meta on
   // the head row, items on the body row. Keeps both halves of the
-  // market panel visually parallel.
+  // market panel visually parallel. The ⟳ refresh button on the head
+  // row triggers POST /api/us_market/refresh — same as what the
+  // morning launchd job does, exposed so the user can pull fresh
+  // data on demand (weekend, after a sleep miss, etc.).
   bar.innerHTML = `
     <div class="ub-head">
       <span class="ub-title">美股昨夜</span>
       ${asOfTxt ? `<span class="ub-asof">${asOfTxt}</span>` : ""}
+      <button type="button" class="ub-refresh" id="usRefreshBtn" title="重新抓取美股">⟳</button>
     </div>
     <div class="ub-body">${items}</div>
   `;
   bar.hidden = false;
+  // Wire up the refresh button. yfinance fetch is ~30s for 7 tickers
+  // so we disable during flight and update label so the user knows
+  // why the page feels frozen.
+  const btn = document.getElementById("usRefreshBtn");
+  if (btn) btn.addEventListener("click", refreshUsBar);
+}
+
+async function refreshUsBar() {
+  const btn = document.getElementById("usRefreshBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "更新中...";
+  }
+  try {
+    const res = await fetch("/api/us_market/refresh", { method: "POST" });
+    const d = await res.json();
+    if (!d.ok) {
+      setStatus(`美股更新失敗:${d.error || "unknown"}`, true);
+      return;
+    }
+    if ((d.failed || []).length > 0) {
+      setStatus(`美股更新完成,${d.updated} 成功 / ${d.failed.length} 失敗`, true);
+    } else {
+      setStatus(`美股更新完成 (${d.updated} 個 ticker)`, false);
+    }
+    // Re-render with fresh data
+    await loadUsBar();
+  } catch (e) {
+    setStatus(`美股更新錯誤:${e.message}`, true);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "⟳";
+    }
+  }
 }
 
 function renderTaiexBar(data) {

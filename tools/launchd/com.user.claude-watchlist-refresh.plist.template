@@ -15,8 +15,23 @@
   <array>
     <string>/bin/zsh</string>
     <string>-c</string>
-    <string>cd "__REPO_PATH__" &amp;&amp; "__PYTHON_BIN__" -m tools.refresh_watchlist</string>
+    <string>cd "__REPO_PATH__" &amp;&amp; "__PYTHON_BIN__" "__REPO_PATH__/tools/refresh_watchlist.py"</string>
   </array>
+  <!-- Why script path not `-m tools.refresh_watchlist`: under launchd's
+       minimal shell environment, `python3 -m` resolution from cwd is
+       unreliable when the repo path contains special characters
+       (e.g. OneDrive's CJK path components). Invoking the script
+       directly sidesteps the issue — the script's own
+       sys.path.insert(0, ROOT) handles the imports. -->
+
+  <!-- Ensure PATH includes /usr/bin and any user-bin locations the
+       script may transitively shell out to (currently none, but
+       defensive against future additions). -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
 
   <!-- Weekdays 07:00 — TWSE opens 09:00, so 2h before market open
        leaves room for the launchd to fire (auto-catches up if the

@@ -2744,8 +2744,8 @@ def get_us_market():
 
     Data source: `backtest/data/_us_{TICKER}.json` populated by
     `python3 -m backtest.prefetch_us` (uses yfinance, ~3 min cold).
-    Read-only here — staleness is the user's responsibility to refresh,
-    surfaced via `as_of` per ticker so the UI can tag old data.
+    Read-only here — staleness is the user's responsibility to refresh
+    (UI exposes a ⟳ button that hits POST /api/us_market/refresh).
     """
     items = [_us_snapshot(t) for t in US_MARKET_TICKERS]
     items = [it for it in items if it is not None]
@@ -2758,6 +2758,29 @@ def get_us_market():
     return {"available": True,
             "as_of": as_of_panel,
             "items": items}
+
+
+@app.post("/api/us_market/refresh")
+def refresh_us_market():
+    """Re-fetch every US ticker via yfinance and rewrite each cache.
+    Same call the morning launchd job makes, exposed as an HTTP route
+    so the user can refresh on-demand from the watchlist strip's ⟳
+    button when the morning auto-refresh hasn't fired (e.g. weekend,
+    or the laptop was asleep)."""
+    try:
+        from backtest.prefetch_us import fetch_ticker, _cache_path
+    except ImportError as e:
+        return {"ok": False, "error": f"yfinance not installed: {e}"}
+    updated, failed = [], []
+    for t in US_MARKET_TICKERS:
+        try:
+            data = fetch_ticker(t, 5)
+            with _cache_path(t).open("w") as f:
+                json.dump(data, f, ensure_ascii=False)
+            updated.append(t)
+        except Exception as e:  # noqa: BLE001
+            failed.append({"ticker": t, "error": str(e)})
+    return {"ok": True, "updated": len(updated), "failed": failed}
 
 
 @app.get("/api/watchlist")

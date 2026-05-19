@@ -66,6 +66,34 @@ tail -f tools/launchd/watchlist-refresh.log
 | news-update | weekdays 21:00 | 13:30 收盤 + 17:00 MOPS 截止 → 重訊全進來; 18-21 媒體寫盤後解讀 → Yahoo 流動完整; 美股還沒開盤 → 不會被隔夜消息蓋過 |
 | watchlist-refresh | weekdays 07:00 | 前一日 TWSE 資料早已釋出; 2h 前 9:00 開盤,夠時間跑完 30-60s/檔的 TWSE 抓取 (新股冷啟動更久); 美股 cache 同時更新,strip 不會 stale |
 
+## macOS Full Disk Access gotcha (OneDrive / iCloud users)
+
+If the repo lives under `~/Library/CloudStorage/` (OneDrive, iCloud, etc.),
+macOS TCC protects that path. The `news-update` job works because the
+`claude` CLI was previously granted FDA, but **`watchlist-refresh` will
+fail until python3 also gets FDA**. Symptom in the log:
+
+```
+can't open file '.../tools/refresh_watchlist.py': [Errno 1] Operation not permitted
+```
+
+One-time fix:
+
+1. System Settings → Privacy & Security → **Full Disk Access**
+2. Click `+`, navigate to the python3 the install picked
+   (typically `/usr/bin/python3`; check installed plist for the
+   exact path)
+3. Toggle ON
+4. Re-trigger: `launchctl start com.user.claude-watchlist-refresh`
+   and verify `tools/launchd/watchlist-refresh.log` no longer shows
+   the permission error.
+
+Alternative if you'd rather avoid FDA grants: use the watchlist's
+`美股昨夜` strip ⟳ button to refresh US data on demand from the
+browser (the FastAPI server inherits FDA from your interactive
+Terminal). The TWSE-side staleness still requires the morning job
+to be working though.
+
 Edit the matching `.plist.template` `<StartCalendarInterval>` block to
 change times, then re-run the install script.
 
