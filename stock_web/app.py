@@ -2709,7 +2709,72 @@ def get_margin_sbl(code: str, days: int = 10):
     if market != MARKET_TWSE:
         return {"available": False, "code": code, "market": market,
                 "reason": "OTC margin/SBL not yet supported"}
-    return margin_sbl_fetcher.get_for_code(code, days=days)
+    out = margin_sbl_fetcher.get_for_code(code, days=days)
+    if out.get("available") and out.get("snapshot"):
+        s4 = _compute_s4_state(out["snapshot"])
+        if s4 is not None:
+            stats = _load_s4_state_stats()
+            history = None
+            if stats and code in stats.get("codes", {}):
+                history = stats["codes"][code]
+            s4["history"] = history
+            out["s4_state"] = s4
+    return out
+
+
+# S4 observation tag — 借券 5日↓≥15% — sourced from the same
+# threshold the sweep validated as the sweet spot (sweep showed
+# 40d alpha +0.08% / 50% win / +2.35pp vs baseline / 61% per-stock
+# breadth, n=789). Marginal signal, surfaced ONLY when firing so
+# the panel stays quiet by default.
+S4_SBL_DROP_PCT = -0.15
+
+
+def _compute_s4_state(snapshot: dict) -> dict | None:
+    """Return {active, change_5d_pct, label, detail} for the current
+    SBL state. Returns None when the change isn't computable. The
+    UI renders the badge ONLY when active=True."""
+    sbl_block = (snapshot or {}).get("sbl") or {}
+    chg = sbl_block.get("change_5d_pct")
+    if chg is None:
+        return None
+    active = chg <= S4_SBL_DROP_PCT
+    return {
+        "active": active,
+        "change_5d_pct": chg,
+        "label": "借券 5日回補" if active else None,
+        "detail": (f"借券餘額 5 日變化 {chg * 100:+.1f}%"
+                   if chg is not None else None),
+    }
+
+
+_S4_STATE_STATS_PATH = (Path(__file__).resolve().parent.parent
+                        / "backtest" / "data" / "_s4_state_stats.json")
+_s4_state_stats_cache: dict | None = None
+_s4_state_stats_mtime: float = 0.0
+
+
+def _load_s4_state_stats() -> dict | None:
+    """mtime-cached read of the per-stock S4 forward-alpha file.
+    Built by `python3 -m backtest.build_s4_state_stats`. Fails soft —
+    when missing, the endpoint just omits `history` from s4_state and
+    the UI hides the per-stock context line."""
+    global _s4_state_stats_cache, _s4_state_stats_mtime
+    if not _S4_STATE_STATS_PATH.exists():
+        return None
+    try:
+        m = _S4_STATE_STATS_PATH.stat().st_mtime
+    except OSError:
+        return None
+    if _s4_state_stats_cache is not None and m == _s4_state_stats_mtime:
+        return _s4_state_stats_cache
+    try:
+        with _S4_STATE_STATS_PATH.open() as f:
+            _s4_state_stats_cache = json.load(f)
+        _s4_state_stats_mtime = m
+    except (OSError, json.JSONDecodeError):
+        return None
+    return _s4_state_stats_cache
 
 
 # --- US market snapshot ------------------------------------------------------

@@ -1189,6 +1189,34 @@
     margin-top: 10px; font-size: 10.5px; color: var(--text-faint);
     font-style: italic;
   }
+  /* S4 (借券 5日↓≥15%) observation badge + per-stock history line.
+     Surfaced ONLY when the signal fires — pool stats show this is a
+     marginal +2.35pp vs baseline signal with 61% per-stock breadth,
+     not chip-worthy. The history line sourced from
+     `backtest/data/_s4_state_stats.json` lets the user see whether
+     THIS code historically delivered on S4 events. */
+  .ms-state {
+    margin-top: 10px;
+    display: flex; flex-wrap: wrap; gap: 6px 12px;
+    align-items: baseline;
+    padding: 8px 10px;
+    background: rgba(86,156,214,0.06);
+    border-left: 2px solid rgba(86,156,214,0.4);
+    border-radius: 3px;
+  }
+  .ms-state-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 500;
+    background: rgba(86,156,214,0.15);
+    border: 1px solid rgba(86,156,214,0.4);
+    color: #9cd6ff;
+  }
+  .ms-state-history {
+    font-size: 11px; color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .ms-state-history .msh-strong { color: var(--text); font-weight: 500; }
   @media (max-width: 720px) {
     .ms-grid { grid-template-columns: repeat(2, 1fr); }
   }
@@ -1946,6 +1974,10 @@
           <div class="ms-change"></div>
           <div class="ms-sub">融資 ÷ 融券</div>
         </div>
+      </div>
+      <div class="ms-state" id="msS4State" hidden>
+        <span class="ms-state-badge" id="msS4Badge"></span>
+        <span class="ms-state-history" id="msS4History"></span>
       </div>
       <div class="ms-note">觀察用 · 單位 = 張 · 變化 = 與 5 日前比較</div>
     </section>
@@ -3245,6 +3277,43 @@ function renderMarginSbl(d) {
     : (ratio >= 100
         ? Math.round(ratio).toLocaleString("en-US")
         : ratio.toFixed(2));
+
+  // S4 observation badge — 借券 5日↓≥15% (法人空頭回補). Surfaces
+  // ONLY when active; the per-stock history line tells the user
+  // whether THIS code historically delivered on S4 events.
+  // backtest/s4_sbl_covering_sweep.py: pool 40d alpha +0.08% / 50% win,
+  // +2.35pp vs baseline, 61% per-stock breadth — marginal signal,
+  // shown as info-tone observation tag (not a buy/sell prompt).
+  const stateWrap = document.getElementById("msS4State");
+  const badgeEl = document.getElementById("msS4Badge");
+  const histEl = document.getElementById("msS4History");
+  if (!stateWrap || !badgeEl || !histEl) return;
+  const s4 = d.s4_state;
+  if (!s4 || !s4.active) {
+    stateWrap.hidden = true;
+    return;
+  }
+  badgeEl.textContent = `📉 ${s4.label}`;
+  badgeEl.title = s4.detail || "";
+  // Per-stock history at 20/40d (the horizons where S4 has its
+  // strongest pool reading). Hide line if no historical data
+  // available (new code with empty _s4_state_stats.json entry).
+  const h = s4.history || {};
+  const fmtCell = (cell) => {
+    if (!cell) return "—";
+    const pct = (cell.alpha_med * 100).toFixed(1);
+    const sign = cell.alpha_med >= 0 ? "+" : "";
+    const winPct = (cell.win_pct * 100).toFixed(0);
+    return `${sign}${pct}% / 勝 ${winPct}% (n=${cell.n})`;
+  };
+  if (h["20"] || h["40"]) {
+    histEl.innerHTML =
+      `<span class="msh-strong">本檔 S4 歷史:</span> ` +
+      `20d ${fmtCell(h["20"])} · 40d ${fmtCell(h["40"])}`;
+  } else {
+    histEl.innerHTML = "本檔尚無歷史資料";
+  }
+  stateWrap.hidden = false;
 }
 
 async function loadIndustryPe(code, myPer) {
