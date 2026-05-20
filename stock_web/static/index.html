@@ -1454,13 +1454,32 @@
     font-size: 10px; font-style: italic;
   }
   .eps-trend-svg svg { width: 100%; height: auto; display: block; }
-  .eps-trend-svg .eps-bar { fill: var(--green); opacity: 0.7; }
+  .eps-trend-svg .eps-bar { fill: var(--green); opacity: 0.85; transition: opacity .12s; }
   .eps-trend-svg .eps-bar.neg { fill: var(--red); }
   .eps-trend-svg .eps-bar:hover { opacity: 1; }
-  .eps-trend-svg .yoy-line { fill: none; stroke: #f5d76e; stroke-width: 1.5; }
-  .eps-trend-svg .yoy-dot { fill: #f5d76e; }
+  /* EPS value label above/below each bar — saves a hover to read the
+     number. Coloured to match the bar so the pairing reads at a glance. */
+  .eps-trend-svg .eps-val { font-size: 9.5px; font-weight: 600;
+    fill: var(--green); font-variant-numeric: tabular-nums; }
+  .eps-trend-svg .eps-val.neg { fill: var(--red); }
+  /* YoY line: smoothed, with a soft glow so it floats above the bars.
+     Markers + value labels make the trajectory readable without hover. */
+  .eps-trend-svg .yoy-line { fill: none; stroke: #f5d76e; stroke-width: 2;
+    stroke-linejoin: round; stroke-linecap: round; }
+  .eps-trend-svg .yoy-dot { fill: #1a1a1a; stroke: #f5d76e; stroke-width: 1.5; }
+  .eps-trend-svg .yoy-val { font-size: 9px; fill: #f5d76e;
+    font-variant-numeric: tabular-nums; }
   .eps-trend-svg .axis-text { fill: var(--text-faint); font-size: 10px; }
-  .eps-trend-svg .gridline { stroke: var(--border-soft); stroke-width: 0.5; }
+  .eps-trend-svg .axis-text.q-label { font-size: 9.5px; }
+  /* Zero baseline solid, intermediate gridlines dashed + fainter. */
+  .eps-trend-svg .gridline { stroke: var(--border-soft); stroke-width: 0.6; }
+  .eps-trend-svg .gridline.minor { stroke: var(--border-soft);
+    stroke-width: 0.5; stroke-dasharray: 2 3; opacity: 0.5; }
+  /* YoY 0% reference line — dashed in the YoY colour so it reads as
+     "the line crossing this means YoY turned negative". */
+  .eps-trend-svg .yoy-zero { stroke: #f5d76e; stroke-width: 1;
+    stroke-dasharray: 4 3; opacity: 0.45; }
+  .eps-trend-svg .yoy-zero-lbl { fill: #f5d76e; opacity: 0.8; }
 
   /* News + Revenue panels — share .two-col grid above */
   .news-card .news-days { font-weight: normal; font-size: 11px; margin-left: 6px; }
@@ -3711,9 +3730,10 @@ function renderEpsTrend(data) {
   if (periods.length < 4) { wrap.hidden = true; return; }
   wrap.hidden = false;
 
-  // Layout: 720 x 200 viewBox, scales to container width.
-  const W = 720, H = 200;
-  const PAD_L = 36, PAD_R = 40, PAD_T = 14, PAD_B = 26;
+  // Layout: 720 x 230 viewBox, scales to container width. Extra top
+  // padding leaves room for value labels above the bars.
+  const W = 720, H = 230;
+  const PAD_L = 40, PAD_R = 44, PAD_T = 26, PAD_B = 30;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
 
@@ -3722,9 +3742,9 @@ function renderEpsTrend(data) {
   const epsMin = Math.min(0, ...eps);
   const epsMax = Math.max(0, ...eps);
   const epsRange = epsMax - epsMin || 1;
-  // Pad 10% headroom
-  const epsLo = epsMin - epsRange * 0.05;
-  const epsHi = epsMax + epsRange * 0.1;
+  // Headroom: more on top (value labels) than bottom.
+  const epsLo = epsMin - epsRange * 0.08;
+  const epsHi = epsMax + epsRange * 0.18;
   const epsSpan = epsHi - epsLo;
 
   const yoyVals = yoy.filter(v => v != null);
@@ -3732,7 +3752,7 @@ function renderEpsTrend(data) {
   if (yoyVals.length) {
     const mn = Math.min(...yoyVals);
     const mx = Math.max(...yoyVals);
-    const pad = Math.max(20, (mx - mn) * 0.15);
+    const pad = Math.max(20, (mx - mn) * 0.2);
     yoyLo = mn - pad; yoyHi = mx + pad;
   }
   const yoySpan = (yoyHi - yoyLo) || 1;
@@ -3743,12 +3763,42 @@ function renderEpsTrend(data) {
   const yEps = (v) => PAD_T + plotH * (1 - (v - epsLo) / epsSpan);
   const yYoy = (v) => PAD_T + plotH * (1 - (v - yoyLo) / yoySpan);
   const yZero = yEps(0);
+  // Compact number formatting for value labels (2.08 → "2.08",
+  // 22.08 → "22.1", 142.5 → "143").
+  const fmtEps = (v) => {
+    const a = Math.abs(v);
+    if (a >= 100) return v.toFixed(0);
+    if (a >= 10) return v.toFixed(1);
+    return v.toFixed(2);
+  };
 
   // Build SVG
   let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">`;
-  // gridlines: 0 line for EPS axis
+
+  // Minor horizontal gridlines (EPS axis) — 3 evenly-spaced lines
+  // between epsLo..epsHi excluding the zero baseline, so the reader
+  // can eyeball bar heights. Drawn first so everything sits on top.
+  const gridSteps = 4;
+  for (let g = 1; g < gridSteps; g++) {
+    const val = epsLo + (epsSpan * g / gridSteps);
+    const gy = yEps(val);
+    if (Math.abs(gy - yZero) < 6) continue;  // skip if near zero line
+    svg += `<line class="gridline minor" x1="${PAD_L}" y1="${gy.toFixed(1)}" x2="${W - PAD_R}" y2="${gy.toFixed(1)}" />`;
+  }
+  // Zero baseline (solid) — EPS axis
   svg += `<line class="gridline" x1="${PAD_L}" y1="${yZero}" x2="${W - PAD_R}" y2="${yZero}" />`;
-  // EPS bars
+
+  // YoY 0% reference line — dashed, in the YoY colour, so the reader
+  // can see at a glance which quarters had positive vs negative YoY.
+  // Only drawn when 0 falls inside the visible YoY range.
+  if (yoyLo < 0 && yoyHi > 0) {
+    const yYoyZero = yYoy(0);
+    svg += `<line class="yoy-zero" x1="${PAD_L}" y1="${yYoyZero.toFixed(1)}" x2="${W - PAD_R}" y2="${yYoyZero.toFixed(1)}" />`;
+    svg += `<text class="axis-text yoy-zero-lbl" x="${W - PAD_R + 5}" y="${(yYoyZero + 3).toFixed(1)}" text-anchor="start">0%</text>`;
+  }
+
+  // EPS bars + value labels
+  const showEpsVal = n <= 14;  // always true in practice (max 13 quarters)
   periods.forEach((p, i) => {
     if (p.eps == null) return;
     const cx = xCenter(i);
@@ -3756,13 +3806,21 @@ function renderEpsTrend(data) {
     const bot = yEps(Math.min(0, p.eps));
     const h = Math.max(1, bot - top);
     const cls = p.eps < 0 ? "eps-bar neg" : "eps-bar";
-    const w = barW * 0.55;
-    svg += `<rect class="${cls}" x="${cx - w / 2}" y="${top}" width="${w}" height="${h}">`;
+    const w = barW * 0.5;
+    const rx = Math.min(2.5, w / 3);
+    svg += `<rect class="${cls}" x="${(cx - w / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${rx}">`;
     const yoyTxt = p.eps_yoy_pct == null ? "" : ` YoY=${p.eps_yoy_pct >= 0 ? "+" : ""}${p.eps_yoy_pct.toFixed(1)}%`;
     svg += `<title>${escapeHtml(p.label)}  EPS=${p.eps.toFixed(2)}${yoyTxt}</title>`;
     svg += `</rect>`;
+    if (showEpsVal) {
+      const valCls = p.eps < 0 ? "eps-val neg" : "eps-val";
+      // positive → label above bar top; negative → below bar bottom
+      const ly = p.eps >= 0 ? top - 4 : bot + 10;
+      svg += `<text class="${valCls}" x="${cx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${fmtEps(p.eps)}</text>`;
+    }
   });
-  // YoY line + dots
+
+  // YoY line + dots + value labels
   const pts = periods.map((p, i) =>
     p.eps_yoy_pct == null ? null : { x: xCenter(i), y: yYoy(p.eps_yoy_pct), v: p.eps_yoy_pct, label: p.label }
   ).filter(p => p);
@@ -3770,24 +3828,31 @@ function renderEpsTrend(data) {
     const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     svg += `<path class="yoy-line" d="${d}" />`;
   }
+  const showYoyVal = pts.length <= 9;
   pts.forEach((p) => {
-    svg += `<circle class="yoy-dot" cx="${p.x}" cy="${p.y}" r="2.5">`;
+    svg += `<circle class="yoy-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3">`;
     svg += `<title>${escapeHtml(p.label)} YoY=${p.v >= 0 ? "+" : ""}${p.v.toFixed(1)}%</title>`;
     svg += `</circle>`;
+    if (showYoyVal) {
+      // place label above the dot, nudged down if near top edge
+      const ly = p.y < PAD_T + 12 ? p.y + 14 : p.y - 6;
+      svg += `<text class="yoy-val" x="${p.x.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${p.v >= 0 ? "+" : ""}${p.v.toFixed(0)}%</text>`;
+    }
   });
-  // x-axis labels — only show every other label if too many
+
+  // x-axis quarter labels — show every other if too many
   const labelEvery = n > 10 ? 2 : 1;
   periods.forEach((p, i) => {
     if (i % labelEvery !== 0) return;
-    svg += `<text class="axis-text" x="${xCenter(i)}" y="${H - PAD_B + 14}" text-anchor="middle">${escapeHtml(p.label)}</text>`;
+    svg += `<text class="axis-text q-label" x="${xCenter(i).toFixed(1)}" y="${H - PAD_B + 16}" text-anchor="middle">${escapeHtml(p.label)}</text>`;
   });
   // y-axis (left=EPS)
-  svg += `<text class="axis-text" x="${PAD_L - 4}" y="${PAD_T + 8}" text-anchor="end">${epsHi.toFixed(1)}</text>`;
-  svg += `<text class="axis-text" x="${PAD_L - 4}" y="${yZero + 3}" text-anchor="end">0</text>`;
-  if (epsLo < 0) svg += `<text class="axis-text" x="${PAD_L - 4}" y="${PAD_T + plotH}" text-anchor="end">${epsLo.toFixed(1)}</text>`;
+  svg += `<text class="axis-text" x="${PAD_L - 5}" y="${(PAD_T + 6).toFixed(1)}" text-anchor="end">${epsHi.toFixed(1)}</text>`;
+  svg += `<text class="axis-text" x="${PAD_L - 5}" y="${(yZero + 3).toFixed(1)}" text-anchor="end">0</text>`;
+  if (epsLo < 0) svg += `<text class="axis-text" x="${PAD_L - 5}" y="${(PAD_T + plotH).toFixed(1)}" text-anchor="end">${epsLo.toFixed(1)}</text>`;
   // y-axis (right=YoY%)
-  svg += `<text class="axis-text" x="${W - PAD_R + 4}" y="${PAD_T + 8}" text-anchor="start">${yoyHi.toFixed(0)}%</text>`;
-  svg += `<text class="axis-text" x="${W - PAD_R + 4}" y="${PAD_T + plotH}" text-anchor="start">${yoyLo.toFixed(0)}%</text>`;
+  svg += `<text class="axis-text" x="${W - PAD_R + 5}" y="${(PAD_T + 6).toFixed(1)}" text-anchor="start">${yoyHi.toFixed(0)}%</text>`;
+  svg += `<text class="axis-text" x="${W - PAD_R + 5}" y="${(PAD_T + plotH).toFixed(1)}" text-anchor="start">${yoyLo.toFixed(0)}%</text>`;
   svg += `</svg>`;
   svgWrap.innerHTML = svg;
 }
