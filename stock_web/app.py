@@ -2664,7 +2664,10 @@ def get_eps_history(code: str, years: int = 3):
               or _market_for(code)
               or MARKET_TWSE)
     data = eps_history_fetcher.get_history(code, market=market, years=years)
-    if data.get("available") and data.get("periods"):
+    # eps_state classifies a QUARTERLY YoY pattern — skip it for the
+    # annual fallback (financial holdings) where the semantics differ.
+    if (data.get("available") and data.get("periods")
+            and data.get("granularity") != "annual"):
         state = _compute_eps_state(data["periods"])
         stats = _load_eps_state_stats()
         history = None

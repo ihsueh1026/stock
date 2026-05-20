@@ -2124,12 +2124,12 @@
       </div>
       <div class="eps-trend" id="epsTrend" hidden>
         <div class="eps-trend-head">
-          <span class="eps-trend-title">季 EPS 趨勢</span>
+          <span class="eps-trend-title" id="epsTrendTitle">季 EPS 趨勢</span>
           <span class="eps-state-badge" id="epsStateBadge" hidden></span>
           <span class="eps-trend-legend">
-            <span class="legend-bar"></span>單季 EPS
+            <span class="legend-bar"></span><span id="epsLegendBar">單季 EPS</span>
             <span class="legend-sep">·</span>
-            <span class="legend-line"></span>同期 YoY%
+            <span class="legend-line"></span><span id="epsLegendLine">同期 YoY%</span>
           </span>
         </div>
         <div class="eps-state-history" id="epsStateHistory" hidden></div>
@@ -3862,7 +3862,18 @@ function renderEpsTrend(data) {
   const svgWrap = document.getElementById("epsTrendSvg");
   if (!wrap || !svgWrap) return;
   const periods = (data.periods || []).filter(p => p.eps !== null && p.eps !== undefined);
-  if (periods.length < 4) { wrap.hidden = true; return; }
+  // Annual fallback (financial holdings) only has ~3 yearly bars, so
+  // relax the minimum from 4 to 3 in that mode. Also retitle the panel
+  // + legend so "季"/"單季"/"同期" don't mislead on a yearly chart.
+  const isAnnual = data.granularity === "annual";
+  const minPeriods = isAnnual ? 3 : 4;
+  if (periods.length < minPeriods) { wrap.hidden = true; return; }
+  const titleEl = document.getElementById("epsTrendTitle");
+  const legBar = document.getElementById("epsLegendBar");
+  const legLine = document.getElementById("epsLegendLine");
+  if (titleEl) titleEl.textContent = isAnnual ? "年度 EPS 趨勢" : "季 EPS 趨勢";
+  if (legBar) legBar.textContent = isAnnual ? "年度 EPS" : "單季 EPS";
+  if (legLine) legLine.textContent = isAnnual ? "年增 YoY%" : "同期 YoY%";
   wrap.hidden = false;
 
   // Layout: 720 x 230 viewBox, scales to container width. Extra top

@@ -260,6 +260,21 @@ def get_history(code: str, market: str = MARKET_TWSE,
                 )
 
     if not raw:
+        # t164sb04 (一般業 quarterly 綜合損益表) returns nothing for
+        # 金融保險業 (金控/銀行/保險/證券) — they file under a different
+        # statement template. Fall back to ANNUAL EPS from t146sb05
+        # 簡明財報 (covers financial-industry statements) so financial
+        # holdings at least get a 3-year annual EPS chart instead of a
+        # blank panel.
+        annual_periods = _annual_fallback(code, market)
+        if annual_periods:
+            return {
+                "code": code, "market": market, "available": True,
+                "granularity": "annual",
+                "periods": annual_periods,
+                "annual": [{"year": p["year"], "eps": p["eps"]}
+                           for p in annual_periods],
+            }
         return {"code": code, "market": market, "available": False,
                 "periods": []}
 
@@ -305,11 +320,51 @@ def get_history(code: str, market: str = MARKET_TWSE,
         "code": code,
         "market": market,
         "available": True,
+        "granularity": "quarterly",
         "periods": periods,
         "annual": [
             {"year": y, "eps": annual[y]} for y in sorted(annual.keys())
         ],
     }
+
+
+def _annual_fallback(code: str, market: str) -> list[dict[str, Any]] | None:
+    """Build an ANNUAL EPS series from t146sb05 簡明財報 for stocks where
+    the quarterly t164sb04 endpoint returns nothing (金融保險業).
+
+    Returns periods in the same shape as get_history's quarterly periods
+    but with quarter=None and year labels, ascending by year. None if no
+    usable annual EPS is available (≥2 years required for a YoY).
+    """
+    try:
+        from stock_web import fundamentals_fetcher as ff
+    except ImportError:
+        return None
+    try:
+        fund = ff.fetch(code, market=market)
+    except Exception:
+        return None
+    if not fund.get("available"):
+        return None
+    annual = [p for p in fund.get("periods", [])
+              if p.get("type") == "annual" and p.get("eps") is not None]
+    if len(annual) < 2:
+        return None
+    annual.sort(key=lambda p: p["year"])
+    by_year = {p["year"]: p["eps"] for p in annual}
+    out: list[dict[str, Any]] = []
+    for p in annual:
+        y = p["year"]
+        prev = by_year.get(y - 1)
+        yoy = None
+        if prev is not None and prev != 0:
+            yoy = round((p["eps"] - prev) / abs(prev) * 100, 1)
+        out.append({
+            "label": str(y), "year": y, "quarter": None,
+            "eps": p["eps"], "eps_yoy_pct": yoy,
+            "annual_eps": p["eps"],
+        })
+    return out
 
 
 def main() -> None:
