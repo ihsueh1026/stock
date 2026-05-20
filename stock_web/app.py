@@ -2789,6 +2789,118 @@ def _load_s4_state_stats() -> dict | None:
     return _s4_state_stats_cache
 
 
+# --- Institutional (三大法人) history -----------------------------------------
+# Surfaces a deeper read of the T86 data than the step-8 light: per-investor
+# (外資/投信/自營) consecutive buy/sell streaks + N-day cumulative net, plus a
+# daily series for a small bar viz. Reads T86 per day from the production
+# cache first (recent days, kept warm by the history-strip prefetch) then
+# falls back to the permanent backtest store (backtest/data/t86[otc]/) for
+# older days — so a 20-day window resolves fully without any network fetch.
+
+_T86_BACKTEST_DIR = (Path(__file__).resolve().parent.parent
+                     / "backtest" / "data")
+
+
+def _t86_backtest_only(date_iso: str, market: str = MARKET_TWSE) -> dict | None:
+    """Read T86 for a date from the permanent backtest store. None if absent."""
+    sub = "t86" if market == MARKET_TWSE else "t86otc"
+    p = _T86_BACKTEST_DIR / sub / f"{date_iso.replace('-', '')}.json"
+    if not p.exists():
+        return None
+    try:
+        with p.open() as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _t86_history_source(date_iso: str, market: str = MARKET_TWSE) -> dict | None:
+    """T86 for a date, production cache first then backtest fallback. No
+    network — purely cache/disk reads so it's safe to call in a loop."""
+    return (_t86_cached_only(date_iso, market)
+            or _t86_backtest_only(date_iso, market))
+
+
+def _institutional_history(code: str, market: str = MARKET_TWSE,
+                           days: int = 20) -> dict:
+    """Per-investor 三大法人 streaks + cumulative net + daily series for one
+    stock over the last `days` trading days (resolved against the per-stock
+    OHLCV cache for the date axis). Net values converted shares → 張 (lots).
+
+    `days` clamps to [5, 60]. Returns {available: false} when no T86 data
+    is found for this code in the window.
+    """
+    days = max(5, min(int(days or 20), 60))
+    rows = _load_rows_from_cache(code)
+    if not rows:
+        return {"available": False, "code": code}
+    # Date axis = the stock's own trading days, most recent `days`.
+    dates = [r.get("date") for r in rows if r.get("date")]
+    dates = [d if isinstance(d, str) else d.isoformat() for d in dates]
+    dates = dates[-days:]
+    daily = []
+    for d in dates:
+        t86 = _t86_history_source(d, market)
+        info = (t86 or {}).get(code) if t86 else None
+        if info is None:
+            continue
+        daily.append({
+            "date": d,
+            "f": round((info.get("f") or 0) / 1000),
+            "t": round((info.get("t") or 0) / 1000),
+            "d": round((info.get("d") or 0) / 1000),
+        })
+    if not daily:
+        return {"available": False, "code": code}
+
+    def _streak(values):
+        """(buy_streak, sell_streak) counted from the latest day backward."""
+        buy = sell = 0
+        for v in reversed(values):
+            if v > 0 and sell == 0:
+                buy += 1
+            elif v < 0 and buy == 0:
+                sell += 1
+            else:
+                break
+        return buy, sell
+
+    out_inv = {}
+    for key, field in (("foreign", "f"), ("trust", "t"), ("dealer", "d")):
+        series = [row[field] for row in daily]
+        buy, sell = _streak(series)
+        out_inv[key] = {
+            "streak_buy": buy,
+            "streak_sell": sell,
+            "cum_net_lots": sum(series),
+            "today_net_lots": series[-1] if series else 0,
+        }
+    return {
+        "available": True,
+        "code": code,
+        "market": market,
+        "latest_date": daily[-1]["date"],
+        "days": len(daily),
+        "investors": out_inv,
+        "daily": daily,
+    }
+
+
+@app.get("/api/institutional/{code}")
+def get_institutional(code: str, days: int = 20):
+    """Per-stock 三大法人 streaks + cumulative net + daily series.
+
+    Deeper view than the step-8 法人 light. Reads T86 from the production
+    cache + permanent backtest store (no network). TWSE + OTC both work
+    (T86 has an OTC variant). `days` clamps to [5, 60].
+    """
+    _validate_code(code)
+    market = (_stock_cache_market(code)
+              or _market_for(code)
+              or MARKET_TWSE)
+    return _institutional_history(code, market=market, days=days)
+
+
 # --- US market snapshot ------------------------------------------------------
 # Reads the rolling caches written by `python3 -m backtest.prefetch_us`
 # (Yahoo Finance via yfinance) and serves the latest close + 1-day

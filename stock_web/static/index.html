@@ -1146,6 +1146,59 @@
   .zones-note { color: var(--text-muted); font-size: 12.5px; padding: 6px 0 12px; line-height: 1.6; }
 
   /* Fundamentals (annual EPS / margins) — full-width table card */
+  /* 法人動向 panel — deeper read of 三大法人 than the step-8 light:
+     per-investor (外資/投信/自營) consecutive buy/sell streak + 20-day
+     cumulative net + a small daily bar strip. Asia colour: net buy =
+     red, net sell = green (matches .wc-change). */
+  .inst-card { margin-top: 14px; padding: 12px 16px; }
+  .inst-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin-top: 8px;
+  }
+  .inst-cell {
+    background: var(--card-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .inst-cell .ic-label { color: var(--text-faint); font-size: 11px; }
+  .inst-cell .ic-streak {
+    font-size: 13px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .inst-cell .ic-streak.buy { color: var(--price-up); }
+  .inst-cell .ic-streak.sell { color: var(--price-down); }
+  .inst-cell .ic-streak.flat { color: var(--text-muted); }
+  .inst-cell .ic-cum {
+    font-size: 11.5px; color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .inst-cell .ic-cum b { font-weight: 600; }
+  .inst-cell .ic-cum .up { color: var(--price-up); }
+  .inst-cell .ic-cum .down { color: var(--price-down); }
+  /* Daily net bar strip — one thin bar per trading day, centred on a
+     zero baseline. Buy days extend up (red), sell days down (green). */
+  .inst-cell .ic-bars {
+    display: flex; align-items: center; gap: 1px;
+    height: 28px; margin-top: 4px;
+  }
+  .inst-cell .ic-bar-wrap {
+    flex: 1; height: 100%; position: relative;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .inst-cell .ic-bar {
+    width: 100%; position: absolute; left: 0;
+    border-radius: 1px;
+  }
+  .inst-cell .ic-bar.up { background: var(--price-up); }
+  .inst-cell .ic-bar.down { background: var(--price-down); }
+  .inst-note {
+    margin-top: 10px; font-size: 10.5px; color: var(--text-faint);
+    font-style: italic;
+  }
+  @media (max-width: 720px) {
+    .inst-grid { grid-template-columns: 1fr; }
+  }
   /* 籌碼面 (margin / SBL) panel — 4-cell observation grid sits between
      the EPS trend and the news/revenue two-col on the detail page.
      Pure information surface — no signal claim. Numbers are 張 (lots),
@@ -2082,6 +2135,14 @@
         <div class="eps-state-history" id="epsStateHistory" hidden></div>
         <div class="eps-trend-svg" id="epsTrendSvg"></div>
       </div>
+    </section>
+
+    <section class="card inst-card" id="instCard" hidden>
+      <div class="card-title">
+        <span>法人動向 <span class="meta" id="instMeta"></span></span>
+      </div>
+      <div class="inst-grid" id="instGrid"></div>
+      <div class="inst-note">單位 = 張 · 連續天數與累積淨額取最近 20 個交易日 · 觀察用</div>
     </section>
 
     <section class="card margin-sbl-card" id="marginSblCard" hidden>
@@ -3403,7 +3464,81 @@ async function loadFundamentals(code, lastClose) {
   // it off here. Don't await — let it stream in.
   loadEpsHistory(code);
   loadDividend(code, lastClose);
+  loadInstitutional(code);
   loadMarginSbl(code);
+}
+
+// 法人動向 panel — deeper 三大法人 read (streaks + 20d cumulative +
+// daily bars). Hidden if /api/institutional has no T86 for this code.
+// Asia colour: net buy = red, net sell = green.
+async function loadInstitutional(code) {
+  const card = document.getElementById("instCard");
+  if (!card) return;
+  card.hidden = true;
+  try {
+    const res = await fetch(`/api/institutional/${encodeURIComponent(code)}?days=20`);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.available || !d.investors) return;
+    renderInstitutional(d);
+    card.hidden = false;
+  } catch (e) {
+    // optional panel; swallow
+  }
+}
+
+function renderInstitutional(d) {
+  const meta = document.getElementById("instMeta");
+  if (meta) {
+    const dt = d.latest_date ? d.latest_date.slice(5).replace("-", "/") : "";
+    meta.textContent = dt ? `${dt} · ${d.days} 日` : "";
+  }
+  const grid = document.getElementById("instGrid");
+  if (!grid) return;
+  const fmtLots = (v) => {
+    if (v == null) return "—";
+    const sign = v > 0 ? "+" : "";
+    return sign + Number(v).toLocaleString("en-US");
+  };
+  const LABELS = { foreign: "外資", trust: "投信", dealer: "自營商" };
+  const daily = d.daily || [];
+  // Shared scale across the 3 investors so bar heights are comparable.
+  let maxAbs = 1;
+  for (const row of daily) {
+    maxAbs = Math.max(maxAbs, Math.abs(row.f), Math.abs(row.t), Math.abs(row.d));
+  }
+  const barStrip = (field) => {
+    return `<div class="ic-bars">` + daily.map(row => {
+      const v = row[field];
+      const h = Math.max(1, Math.round(Math.abs(v) / maxAbs * 12));
+      const cls = v > 0 ? "up" : (v < 0 ? "down" : "");
+      // position: buy extends up from centre, sell down from centre
+      const style = v >= 0
+        ? `height:${h}px;bottom:50%;`
+        : `height:${h}px;top:50%;`;
+      const title = `${row.date}: ${v >= 0 ? "+" : ""}${v.toLocaleString("en-US")} 張`;
+      return `<span class="ic-bar-wrap" title="${escapeHtml(title)}"><span class="ic-bar ${cls}" style="${style}"></span></span>`;
+    }).join("") + `</div>`;
+  };
+  const cell = (key, field) => {
+    const inv = d.investors[key] || {};
+    const buy = inv.streak_buy || 0;
+    const sell = inv.streak_sell || 0;
+    let streakTxt, streakCls;
+    if (buy > 0) { streakTxt = `連買 ${buy} 日`; streakCls = "buy"; }
+    else if (sell > 0) { streakTxt = `連賣 ${sell} 日`; streakCls = "sell"; }
+    else { streakTxt = "—"; streakCls = "flat"; }
+    const cum = inv.cum_net_lots;
+    const cumCls = cum > 0 ? "up" : (cum < 0 ? "down" : "");
+    return `
+      <div class="inst-cell">
+        <div class="ic-label">${LABELS[key]}</div>
+        <div class="ic-streak ${streakCls}">${streakTxt}</div>
+        <div class="ic-cum">20日累積 <b class="${cumCls}">${fmtLots(cum)}</b> 張</div>
+        ${barStrip(field)}
+      </div>`;
+  };
+  grid.innerHTML = cell("foreign", "f") + cell("trust", "t") + cell("dealer", "d");
 }
 
 // 籌碼面 panel — 融資 / 融券 / 借券 / 資券比 observation card. Pure
