@@ -1217,6 +1217,52 @@
     line-height: 1.5;
   }
   .ms-state-history .msh-strong { color: var(--text); font-weight: 500; }
+  /* Collapsible "how to interpret" reference inside the 籌碼面 card.
+     Closed by default — the user opens it when they need the legend.
+     Borrows the overall-rules tone (smaller, muted) but lives inline
+     in the card, not in a separate panel. */
+  .ms-help {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .ms-help summary {
+    cursor: pointer; user-select: none; padding: 4px 0;
+    color: var(--text-muted); font-weight: 500;
+  }
+  .ms-help summary:hover { color: var(--text); }
+  .ms-help-body {
+    margin-top: 6px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed var(--border-soft);
+    border-radius: 4px;
+  }
+  .ms-help .msh-section { margin-bottom: 8px; }
+  .ms-help .msh-section:last-of-type { margin-bottom: 0; }
+  .ms-help .msh-label {
+    color: var(--text); font-weight: 500; font-size: 12px;
+    margin-bottom: 2px;
+  }
+  .ms-help ul {
+    margin: 2px 0 0 18px; padding: 0;
+    list-style-type: disc;
+    line-height: 1.6;
+  }
+  .ms-help ul li { font-size: 11.5px; margin-bottom: 1px; }
+  .ms-help ul li b { color: var(--text); font-weight: 600; }
+  .ms-help .msh-footer {
+    margin-top: 10px; padding-top: 6px;
+    border-top: 1px dashed var(--border-soft);
+    color: var(--text-faint); font-size: 10.5px;
+    font-style: italic;
+  }
+  .ms-help .msh-footer code {
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.06);
+    padding: 1px 4px; border-radius: 3px;
+    font-size: 10.5px;
+  }
   @media (max-width: 720px) {
     .ms-grid { grid-template-columns: repeat(2, 1fr); }
   }
@@ -1980,6 +2026,45 @@
         <span class="ms-state-history" id="msS4History"></span>
       </div>
       <div class="ms-note">觀察用 · 單位 = 張 · 變化 = 與 5 日前比較</div>
+      <details class="ms-help">
+        <summary>💡 如何解讀</summary>
+        <div class="ms-help-body">
+          <div class="msh-section">
+            <div class="msh-label">融資餘額 (散戶向券商借錢買股)</div>
+            <ul>
+              <li><b>↑</b> 散戶加碼 — 極端高位常為反指標 (通常買在頂)</li>
+              <li><b>↓</b> 散戶停損 / 出場</li>
+              <li><b>使用率 ≥ 90%</b> 強迫斷頭風險 (50% 內為正常)</li>
+            </ul>
+          </div>
+          <div class="msh-section">
+            <div class="msh-label">融券餘額 (散戶信用放空)</div>
+            <ul>
+              <li><b>↑</b> 散戶看空 — 高位易引發軋空 (short squeeze)</li>
+              <li><b>↓</b> 空頭回補</li>
+            </ul>
+          </div>
+          <div class="msh-section">
+            <div class="msh-label">借券餘額 SBL (主力 / 法人放空)</div>
+            <ul>
+              <li>跟融券差別:借券是法人主導,訊號比融券乾淨</li>
+              <li><b>↑</b> 法人放空積極 — 常為負向訊號</li>
+              <li><b>↓</b> 法人回補 — 5 日 ≥ 15% 觸發本檔 S4 觀察標籤</li>
+            </ul>
+          </div>
+          <div class="msh-section">
+            <div class="msh-label">資券比 = 融資 ÷ 融券</div>
+            <ul>
+              <li><b>&gt; 100</b> 散戶極度看多、空方極少 — 強勢股常態,但極值常為頭部</li>
+              <li><b>10 ~ 100</b> 一般狀況</li>
+              <li><b>&lt; 10</b> 散戶極空、空方重 — 此 50 檔池歷史 40d 中位 -4.0% (反指標)</li>
+            </ul>
+          </div>
+          <div class="msh-footer">
+            以上皆為觀察用,不構成進場依據。Backtest 細節見 <code>backtest/margin_sbl_study.py</code>。
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="two-col" id="newsRevCol" hidden>
