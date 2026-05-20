@@ -25,7 +25,7 @@ import json
 import re
 import sys
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -182,6 +182,18 @@ def _latest_published(today: date | None = None) -> tuple[int, int]:
     return py, pm
 
 
+def _month_recent(py: int, pm: int, today: date) -> bool:
+    """True if month (py, pm)'s revenue file might still be growing with
+    late filers. General industry reports by the 10th of the next month,
+    but 金融保險業 (金控/銀行/保險/證券) often file a few days later, so a
+    file cached right after the 10th can be missing them. We treat the
+    file as still-mutable until ~20 days past the deadline; before then a
+    missing-code lookup forces a re-fetch to pick up stragglers."""
+    ny, nm = (py + 1, 1) if pm == 12 else (py, pm + 1)
+    deadline = date(ny, nm, 10)
+    return today <= deadline + timedelta(days=20)
+
+
 def get_for_code(code: str, market: str = MARKET_TWSE,
                  today: date | None = None) -> dict[str, Any] | None:
     """Return the most-recent monthly-revenue snapshot for one stock.
@@ -195,6 +207,12 @@ def get_for_code(code: str, market: str = MARKET_TWSE,
     # Try the latest expected month, then walk back one more if missing.
     for _ in range(2):
         month_data = fetch_month(market, py, pm)
+        # Late-filer recovery: 金控/金融保險業 land in the file a few days
+        # after the general-industry deadline. If the code is missing AND
+        # this month's file may still be growing, bypass the (possibly
+        # frozen-incomplete) cache once and re-fetch fresh.
+        if code not in month_data and _month_recent(py, pm, today):
+            month_data = fetch_month(market, py, pm, force=True)
         if code in month_data:
             row = month_data[code]
             return {
