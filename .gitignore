@@ -33,3 +33,10 @@ stock_web/news_log.jsonl
 # scheduled jobs). Per-user runtime data.
 tools/launchd/news-update.log
 tools/launchd/watchlist-refresh.log
+
+# Margin / SBL daily dumps — exempt from the 7-day cache purge (see
+# _PURGE_EXEMPT_PREFIXES in app.py) so they accumulate to feed the
+# 60-day 籌碼面 gauge + backtest studies. Per-user runtime data,
+# regenerate via `python3 -m backtest.prefetch_margin_sbl`.
+stock_web/cache/margin_*.json
+stock_web/cache/sbl_*.json

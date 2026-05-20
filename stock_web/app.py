@@ -61,6 +61,16 @@ _DATED_CACHE_PREFIXES = (
     "taiex_", "t86_", "t86otc_", "companies_", "companies_otc_",
 )
 
+# Dated caches that must NOT be purged despite having a _YYYYMMDD suffix.
+# margin_/sbl_ are immutable once published (like revenue) AND feed two
+# things that need a long lookback: the detail-page 籌碼面 60-day range
+# gauge, and the margin/SBL backtest studies which read these same caches
+# going back years. Purging them at 7 days broke the gauge (only ~2 days
+# survived) and would silently shrink the backtest window. They're small
+# (~2 KB each) so unbounded accumulation is acceptable, matching the
+# revenue-file precedent.
+_PURGE_EXEMPT_PREFIXES = ("margin_", "sbl_")
+
 # Per-stock locks so concurrent requests for the same code don't double-fetch.
 _fetch_locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -95,6 +105,8 @@ def _purge_old_caches(retention_days: int = CACHE_RETENTION_DAYS) -> int:
     cutoff = _trading_day() - timedelta(days=retention_days)
     removed = 0
     for path in CACHE_DIR.glob("*.json"):
+        if path.name.startswith(_PURGE_EXEMPT_PREFIXES):
+            continue  # margin_/sbl_ retained long-term (see comment above)
         d = _parse_cache_date(path)
         if d is None or d >= cutoff:
             continue
