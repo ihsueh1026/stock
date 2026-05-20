@@ -40,29 +40,60 @@ from stock_web.app import (  # noqa: E402
 
 
 def _refresh_margin_sbl() -> None:
-    """Pre-fetch today's whole-market 融資/融券 + 借券 dumps so the
-    detail-page 籌碼面 panel has at least 1 day of history when the
-    user clicks into any stock. Both fetchers are idempotent (skip
-    if cache exists) so re-runs cost nothing."""
+    """Pre-fetch the most recent available 融資/融券 + 借券 dumps.
+
+    The 07:00 morning run happens BEFORE TWSE publishes today's data
+    (close is 13:30, margin/SBL appears ~16:00). So asking for today's
+    date returns an empty dump. Walk back up to 7 calendar days
+    (skipping weekends) and stop at the first non-empty response,
+    which will be either yesterday (Mon-Fri morning) or last Friday
+    (Mon morning).
+
+    Both fetchers are idempotent (skip if cache exists) so empty
+    in-between calls cost a single TWSE request each."""
     try:
         from stock_web import margin_sbl_fetcher as msbl
     except ImportError as e:
         print(f"  (Margin/SBL refresh skipped — import failed: {e})",
               flush=True)
         return
-    from datetime import date
-    iso = date.today().isoformat()
-    print(f"\nRefreshing margin + SBL caches for {iso} ...", flush=True)
-    try:
-        m = msbl.fetch_margin(iso)
-        print(f"  margin: {len(m)} codes", flush=True)
-    except Exception as e:  # noqa: BLE001
-        print(f"  margin: ERROR {e}", flush=True)
-    try:
-        s = msbl.fetch_sbl(iso)
-        print(f"  sbl: {len(s)} codes", flush=True)
-    except Exception as e:  # noqa: BLE001
-        print(f"  sbl: ERROR {e}", flush=True)
+    from datetime import date, timedelta
+    print("\nRefreshing margin + SBL caches (walking back to last "
+          "published trading day)...", flush=True)
+    m_done = s_done = False
+    for back in range(7):
+        d = date.today() - timedelta(days=back)
+        if d.weekday() >= 5:  # skip weekends
+            continue
+        iso = d.isoformat()
+        if not m_done:
+            try:
+                m = msbl.fetch_margin(iso)
+                if m:
+                    print(f"  margin {iso}: {len(m)} codes",
+                          flush=True)
+                    m_done = True
+            except Exception as e:  # noqa: BLE001
+                print(f"  margin {iso}: ERROR {e}", flush=True)
+                m_done = True  # bail rather than spam errors
+        if not s_done:
+            try:
+                s = msbl.fetch_sbl(iso)
+                if s:
+                    print(f"  sbl    {iso}: {len(s)} codes",
+                          flush=True)
+                    s_done = True
+            except Exception as e:  # noqa: BLE001
+                print(f"  sbl    {iso}: ERROR {e}", flush=True)
+                s_done = True
+        if m_done and s_done:
+            break
+    if not m_done:
+        print("  margin: no published data in last 7 calendar days",
+              flush=True)
+    if not s_done:
+        print("  sbl: no published data in last 7 calendar days",
+              flush=True)
 
 
 def _refresh_us_market() -> None:
