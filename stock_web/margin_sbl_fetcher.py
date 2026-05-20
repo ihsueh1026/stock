@@ -265,22 +265,28 @@ def get_for_code(code: str, days: int = 10,
         ]   chronological asc
       }
 
-    `days` clamps to [3, 30]. `fetch_missing=True` triggers a network
-    fetch when the LATEST trading day isn't cached (so calling this
-    inside a request handler can opportunistically pull today's data
-    on first hit); historical-day fetches are NEVER fanned out per
-    request — they come from existing caches only, so the function
-    is cheap when warm.
+    `days` clamps to [3, 30] for the returned `history` list. The
+    function also walks back ~60 trading days separately to compute
+    `range_60d` stats per metric (max / min / current percentile),
+    so the UI can tell whether today sits in the high or low end of
+    recent history. `fetch_missing=True` triggers a network fetch
+    when the LATEST trading day isn't cached; historical-day fetches
+    are NEVER fanned out per request — they come from existing
+    caches only, so the function is cheap when warm.
     """
     days = max(3, min(int(days or 10), 30))
     today = today or date.today()
+    # Walk back enough weekdays to populate range stats (60 trading
+    # days ≈ 3 calendar months), capped so we don't iterate forever.
+    RANGE_LOOKBACK_DAYS = 60
 
     # Build candidate dates: walk back from `today` skipping weekends.
     # We don't have a TWSE calendar handy, so weekends + missing-cache
     # behaves like a holiday.
     candidates: list[str] = []
     d = today
-    while len(candidates) < days * 2 and (today - d).days < days * 3:
+    while (len(candidates) < RANGE_LOOKBACK_DAYS * 2
+           and (today - d).days < RANGE_LOOKBACK_DAYS * 2):
         if d.weekday() < 5:  # Mon-Fri
             candidates.append(d.isoformat())
         d -= timedelta(days=1)
@@ -342,6 +348,23 @@ def get_for_code(code: str, days: int = 10,
     if f_now is not None and s_now and s_now > 0:
         long_short = round(f_now / s_now, 2)
 
+    # 60-day range stats per metric — lets the UI tell the user
+    # whether today sits at the high / low end of recent history.
+    # Percentile = (current - min) / (max - min); 0..1, where 1 = at
+    # 60-day high. None if <5 days of data or flat series.
+    def _range_stats(key: str):
+        vals = [h.get(key) for h in history if h.get(key) is not None]
+        if len(vals) < 5:
+            return None
+        mx, mn = max(vals), min(vals)
+        cur = history[-1].get(key)
+        if cur is None or mx == mn:
+            return {"max": mx, "min": mn, "n_days": len(vals),
+                    "percentile": None}
+        pct = (cur - mn) / (mx - mn)
+        return {"max": mx, "min": mn, "n_days": len(vals),
+                "percentile": round(pct, 3)}
+
     snapshot = {
         "f": {
             "balance_today": f_now,
@@ -349,25 +372,32 @@ def get_for_code(code: str, days: int = 10,
             "change_5d_abs": _delta(f_now, bench["f"]),
             "change_5d_pct": _ratio(f_now, bench["f"]),
             "usage_pct": usage_pct,
+            "range_60d": _range_stats("f"),
         },
         "s": {
             "balance_today": s_now,
             "balance_yday": (yday or {}).get("s"),
             "change_5d_abs": _delta(s_now, bench["s"]),
             "change_5d_pct": _ratio(s_now, bench["s"]),
+            "range_60d": _range_stats("s"),
         },
         "sbl": {
             "balance_today": sbl_now,
             "balance_yday": (yday or {}).get("sbl"),
             "change_5d_abs": _delta(sbl_now, bench["sbl"]),
             "change_5d_pct": _ratio(sbl_now, bench["sbl"]),
+            "range_60d": _range_stats("sbl"),
         },
         "long_short_ratio": long_short,
     }
+    # Truncate the returned history to the requested `days` window —
+    # we walked back 60 days to compute range_60d but the response
+    # only needs the most recent N for display.
+    history_return = history[-days:]
     return {
         "available": True,
         "code": code,
         "latest_date": latest["date"],
         "snapshot": snapshot,
-        "history": history,
+        "history": history_return,
     }

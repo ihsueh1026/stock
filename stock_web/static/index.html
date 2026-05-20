@@ -1152,6 +1152,46 @@
      5-day change in absolute lots + %. Asia colour convention: value
      went up → red, down → green (consistent with .wc-change). */
   .margin-sbl-card { margin-top: 14px; padding: 12px 16px; }
+  /* Summary chips at the top of the card — distills the 4-cell grid
+     into 1-3 short observations so the user gets the headline read
+     before scanning individual cells. Tone-coded:
+       pos   = green (法人回補 / 融券退潮)
+       caution = amber (融資衝高 / 借券近高位)
+       neg   = red (資券比 <10 / 借券激增)
+       note  = blue (資券比 >200, neutral observation)
+       neutral = gray (no notable feature) */
+  .ms-summary {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 6px 0 10px 0;
+  }
+  .ms-sum-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 500;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-soft);
+    color: var(--text-muted);
+  }
+  .ms-sum-chip.pos {
+    background: rgba(0,200,120,0.10);
+    border-color: rgba(0,200,120,0.35);
+    color: var(--green);
+  }
+  .ms-sum-chip.caution {
+    background: rgba(245,160,80,0.10);
+    border-color: rgba(245,160,80,0.35);
+    color: var(--orange, #f5a050);
+  }
+  .ms-sum-chip.neg {
+    background: rgba(220,80,80,0.10);
+    border-color: rgba(220,80,80,0.40);
+    color: var(--red);
+  }
+  .ms-sum-chip.note {
+    background: rgba(86,156,214,0.10);
+    border-color: rgba(86,156,214,0.35);
+    color: #9cd6ff;
+  }
   .ms-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -1185,6 +1225,40 @@
     font-size: 10.5px; color: var(--text-faint);
     min-height: 12px;
   }
+  /* 60-day range gauge — thin bar with a tick marking where the
+     current value sits within the trailing 60-trading-day max/min.
+     Tooltip on hover shows the actual max/min numbers. */
+  .ms-range {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 3px;
+  }
+  .ms-range-bar {
+    position: relative; flex: 1;
+    height: 4px; border-radius: 2px;
+    background: rgba(255,255,255,0.08);
+    overflow: visible;
+  }
+  .ms-range-tick {
+    position: absolute; top: 50%;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text);
+    transform: translate(-50%, -50%);
+    /* Subtle outline so the tick reads against any background */
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  }
+  .ms-range-text {
+    font-size: 10px; color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
+  }
+  /* High / low position tinting — gives a quick visual sense without
+     needing the user to read the number. ≥80% = "high" (orange tone),
+     ≤20% = "low" (blue tone). */
+  .ms-range.hi .ms-range-tick { background: var(--orange, #f5a050); }
+  .ms-range.hi .ms-range-text { color: var(--orange, #f5a050); }
+  .ms-range.lo .ms-range-tick { background: #9cd6ff; }
+  .ms-range.lo .ms-range-text { color: #9cd6ff; }
   .ms-note {
     margin-top: 10px; font-size: 10.5px; color: var(--text-faint);
     font-style: italic;
@@ -1995,23 +2069,36 @@
       <div class="card-title">
         <span>籌碼面 <span class="meta" id="marginSblMeta"></span></span>
       </div>
+      <div class="ms-summary" id="msSummary" hidden></div>
       <div class="ms-grid">
         <div class="ms-cell">
           <div class="ms-label">融資餘額</div>
           <div class="ms-value" id="msF">—</div>
           <div class="ms-change" id="msFChg"></div>
+          <div class="ms-range" id="msFRange" hidden>
+            <div class="ms-range-bar"><span class="ms-range-tick"></span></div>
+            <div class="ms-range-text"></div>
+          </div>
           <div class="ms-sub" id="msFSub"></div>
         </div>
         <div class="ms-cell">
           <div class="ms-label">融券餘額</div>
           <div class="ms-value" id="msS">—</div>
           <div class="ms-change" id="msSChg"></div>
+          <div class="ms-range" id="msSRange" hidden>
+            <div class="ms-range-bar"><span class="ms-range-tick"></span></div>
+            <div class="ms-range-text"></div>
+          </div>
           <div class="ms-sub"></div>
         </div>
         <div class="ms-cell">
           <div class="ms-label">借券餘額</div>
           <div class="ms-value" id="msSbl">—</div>
           <div class="ms-change" id="msSblChg"></div>
+          <div class="ms-range" id="msSblRange" hidden>
+            <div class="ms-range-bar"><span class="ms-range-tick"></span></div>
+            <div class="ms-range-text"></div>
+          </div>
           <div class="ms-sub" id="msSblSub">法人放空訊號</div>
         </div>
         <div class="ms-cell">
@@ -2029,6 +2116,16 @@
       <details class="ms-help">
         <summary>💡 如何解讀</summary>
         <div class="ms-help-body">
+          <div class="msh-section">
+            <div class="msh-label">怎麼判定高 / 低位</div>
+            <ul>
+              <li>絕對張數 <b>跨股不可比</b> — 股本不同,2330 的「正常」是 26,000 張,小型股 500 張就算多</li>
+              <li>看 <b>相對自身歷史</b>:接近近 60 日最高 → 高位;接近 60 日最低 → 低位</li>
+              <li>看 <b>5 日變化</b> (本卡片已顯示):±5% 以內為常態、±15% 算明顯波動、±30% 為極端</li>
+              <li><b>資券比例外</b> — 它是比例,跨股可比:&gt;100 高、10~100 中、&lt;10 低</li>
+              <li><b>借券激增 / 急退</b> 比融券更值得看 — 法人主導訊號乾淨</li>
+            </ul>
+          </div>
           <div class="msh-section">
             <div class="msh-label">融資餘額 (散戶向券商借錢買股)</div>
             <ul>
@@ -3310,6 +3407,58 @@ async function loadMarginSbl(code) {
   }
 }
 
+// Summary chips for the 籌碼面 card — distills the 4 metrics + 5d
+// changes + 60d positions into 0-3 short observations. Priority:
+// (1) S4 institutional events first (借券 ↑/↓), (2) margin
+// extremes, (3) ratio extremes. Empty array → "無明顯特徵" chip.
+function summarizeMsbl(snap) {
+  const out = [];
+  const sbl = snap.sbl || {};
+  const sblChg = sbl.change_5d_pct;
+  const sblPos = (sbl.range_60d || {}).percentile;
+  // SBL (institutional) — most informative tier
+  if (sblChg != null && sblChg <= -0.15) {
+    out.push({ tone: "pos",
+      text: `📉 法人借券回補 5日${(sblChg * 100).toFixed(1)}%` });
+  } else if (sblChg != null && sblChg >= 0.20) {
+    out.push({ tone: "neg",
+      text: `⚠ 法人借券激增 5日+${(sblChg * 100).toFixed(0)}%` });
+  } else if (sblPos != null && sblPos >= 0.85) {
+    out.push({ tone: "caution",
+      text: `借券近60日新高 (${(sblPos * 100).toFixed(0)}%位)` });
+  } else if (sblPos != null && sblPos <= 0.15) {
+    out.push({ tone: "pos",
+      text: `借券近60日新低 (${(sblPos * 100).toFixed(0)}%位)` });
+  }
+  // 融資 (retail leverage)
+  const f = snap.f || {};
+  const fPos = (f.range_60d || {}).percentile;
+  const fChg = f.change_5d_pct;
+  if (fPos != null && fPos >= 0.85 && fChg != null && fChg >= 0.03) {
+    out.push({ tone: "caution", text: "🔥 融資高位加碼" });
+  } else if (fPos != null && fPos <= 0.15 && fChg != null && fChg <= -0.03) {
+    out.push({ tone: "pos", text: "融資退潮 (低位)" });
+  }
+  // 融券 (retail short)
+  const sChg = (snap.s || {}).change_5d_pct;
+  if (sChg != null && sChg >= 0.30) {
+    out.push({ tone: "note",
+      text: `⚡ 融券激增 5日+${(sChg * 100).toFixed(0)}% (squeeze 風險)` });
+  }
+  // 資券比 extremes
+  const ratio = snap.long_short_ratio;
+  if (ratio != null && ratio > 200) {
+    out.push({ tone: "note", text: `資券比 ${Math.round(ratio)} (空方極少)` });
+  } else if (ratio != null && ratio < 10) {
+    out.push({ tone: "neg",
+      text: `資券比 ${ratio.toFixed(1)} (空方重壓)` });
+  }
+  if (out.length === 0) {
+    out.push({ tone: "neutral", text: "· 無明顯特徵" });
+  }
+  return out;
+}
+
 function renderMarginSbl(d) {
   const snap = d.snapshot;
   const meta = document.getElementById("marginSblMeta");
@@ -3317,6 +3466,15 @@ function renderMarginSbl(d) {
     const dateTxt = d.latest_date ? d.latest_date.slice(5).replace("-", "/") : "";
     const nDays = (d.history || []).length;
     meta.textContent = dateTxt ? `${dateTxt} · ${nDays} 日歷史` : "";
+  }
+  // Summary chips row
+  const sumWrap = document.getElementById("msSummary");
+  if (sumWrap) {
+    const chips = summarizeMsbl(snap);
+    sumWrap.innerHTML = chips.map(c =>
+      `<span class="ms-sum-chip ${c.tone}">${escapeHtml(c.text)}</span>`
+    ).join("");
+    sumWrap.hidden = false;
   }
   const fmt = (v) => v == null
     ? "—"
@@ -3339,9 +3497,34 @@ function renderMarginSbl(d) {
     else if (absVal < 0) el.classList.add("down");
   };
 
+  // 60-day range gauge — positions a tick within the bar based on
+  // current value's percentile in the 60d max/min. Hidden when stats
+  // aren't computable (<5 days of cached data) so empty bars don't
+  // distract. Tooltip shows actual max/min for the curious user.
+  const setRange = (id, range) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove("hi", "lo");
+    if (!range || range.percentile == null) {
+      el.hidden = true;
+      return;
+    }
+    const pct = range.percentile;
+    const tick = el.querySelector(".ms-range-tick");
+    const text = el.querySelector(".ms-range-text");
+    if (tick) tick.style.left = `${(pct * 100).toFixed(0)}%`;
+    if (text) text.textContent = `60日 ${(pct * 100).toFixed(0)}%位`;
+    // Hover tooltip on the whole row reveals the absolute max / min
+    el.title = `60 日範圍:${range.min.toLocaleString("en-US")} ~ ${range.max.toLocaleString("en-US")}  (取樣 ${range.n_days} 日)`;
+    if (pct >= 0.8) el.classList.add("hi");
+    else if (pct <= 0.2) el.classList.add("lo");
+    el.hidden = false;
+  };
+
   // 融資
   document.getElementById("msF").textContent = fmt(snap.f.balance_today);
   setChange("msFChg", snap.f.change_5d_abs, snap.f.change_5d_pct);
+  setRange("msFRange", snap.f.range_60d);
   const usage = snap.f.usage_pct;
   document.getElementById("msFSub").textContent = usage != null
     ? `使用率 ${usage.toFixed(2)}%`
@@ -3350,10 +3533,12 @@ function renderMarginSbl(d) {
   // 融券
   document.getElementById("msS").textContent = fmt(snap.s.balance_today);
   setChange("msSChg", snap.s.change_5d_abs, snap.s.change_5d_pct);
+  setRange("msSRange", snap.s.range_60d);
 
   // 借券
   document.getElementById("msSbl").textContent = fmt(snap.sbl.balance_today);
   setChange("msSblChg", snap.sbl.change_5d_abs, snap.sbl.change_5d_pct);
+  setRange("msSblRange", snap.sbl.range_60d);
 
   // 資券比 — special case, just a ratio with no time-series change
   const ratio = snap.long_short_ratio;
