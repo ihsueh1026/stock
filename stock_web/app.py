@@ -119,9 +119,9 @@ def _purge_old_caches(retention_days: int = CACHE_RETENTION_DAYS) -> int:
 
 
 # 交易日切換時刻。台股日線 OHLCV / T86 / 融資借券都在盤後(下午)才產出,
-# 所以在這個小時之前,「目前交易日」仍停留在上一個已完成的交易日;到 17:00
-# 才換日。盤後的 refresh_watchlist(17:00)正好在換日後抓進當日新資料。
-TRADING_DAY_ROLLOVER_HOUR = 17
+# 所以在這個小時之前,「目前交易日」仍停留在上一個已完成的交易日;到 16:00
+# 才換日。盤後的 refresh_watchlist(16:00)正好在換日後抓進當日新資料。
+TRADING_DAY_ROLLOVER_HOUR = 16
 
 
 # 對應的交易日 = 今天日曆日(未過換日時刻則回推一日),週末再回推至週五。

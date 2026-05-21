@@ -1,9 +1,9 @@
 #!/usr/bin/env zsh
 # Install (or refresh) the launchd schedule that runs (headless, weekdays
-# 17:00) tools/broker_branch_pull.py --no-crawl — i.e. INGEST ONLY.
+# 16:00) tools/broker_branch_pull.py --no-crawl — i.e. INGEST ONLY.
 #
 # The model: the user prepares step 2 (the BSR crawl) earlier in the day,
-# so by 17:00 the CSVs are already in twse_web/output/. This job just
+# so by 16:00 the CSVs are already in twse_web/output/. This job just
 # ingests them — no crawl, no interactive pause, no terminal. The crawl
 # (which solves a CAPTCHA) is never run or scheduled here; it's manual prep.
 #
@@ -55,8 +55,8 @@ fi
 
 print ""
 print "──────────────────────────────────────────────────────────────"
-print "ⓘ  Runs headless weekdays 17:00 → ingest only (--no-crawl)."
-print "   YOU must prepare step 2 BEFORE 17:00: run the BSR crawler so"
+print "ⓘ  Runs headless weekdays 16:00 → ingest only (--no-crawl)."
+print "   YOU must prepare step 2 BEFORE 16:00: run the BSR crawler so"
 print "   the day's CSVs are already in twse_web/output/. This job does"
 print "   NOT crawl — it just ingests whatever is there."
 print "──────────────────────────────────────────────────────────────"
