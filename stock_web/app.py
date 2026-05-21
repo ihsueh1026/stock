@@ -118,10 +118,11 @@ def _purge_old_caches(retention_days: int = CACHE_RETENTION_DAYS) -> int:
     return removed
 
 
-# 交易日切換時刻。台股日線 OHLCV / T86 / 融資借券都在盤後(下午)才產出,
-# T86/融資/借券約 16:00~16:30 才齊,所以在這個時刻之前,「目前交易日」仍停留
-# 在上一個已完成的交易日;到 16:30 才換日。盤後的 refresh_watchlist(16:30)
-# 正好在換日後抓進當日新資料。
+# 交易日切換時刻。當日線 OHLCV 與 T86(三大法人)在盤後下午即產出(約 16:00 齊),
+# 所以在這個時刻之前,「目前交易日」仍停留在上一個已完成的交易日;到 16:30 才換日,
+# 盤後的 refresh_watchlist(16:30)隨即抓進當日收盤 + 法人。
+# 註:融資/融券/借券官方約 21:00~21:30 才公布,當日盤後抓不到,由隔日 07:00 那場
+#     補上前一交易日的數值(_refresh_margin_sbl 會回推到最近已公布日)。
 TRADING_DAY_ROLLOVER_HOUR = 16
 TRADING_DAY_ROLLOVER_MINUTE = 30
 
