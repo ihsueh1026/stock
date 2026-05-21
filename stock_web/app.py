@@ -1455,42 +1455,16 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                     a["industry_note"] = note
 
     # --- 券商分點 集中度 結論 (from the semi-manual ingest log) ---
-    # No `stat_key` → shows in the detail-page 提醒 strip but is excluded
+    # Detail-page 提醒 only: we append WITHOUT a stat_key so it's excluded
     # from the watchlist chip scan + forward_log (both require stat_key).
-    # Only the strong tier (|集中度| ≥ 15%) is decisive enough to surface
-    # as a conclusion; the full 券商分點 card carries the milder reads.
-    # Skipped when the latest ingested 分點 is >7 days older than the view,
-    # so a stale data point isn't presented as a current conclusion.
+    # The homepage 今日觸發 panel surfaces the same conclusion via a
+    # separate path in watchlist_chips() (also forward-log-free).
     if code:
-        bb = [r for r in _load_broker_branch_log() if r.get("code") == code]
-        if bb:
-            bb.sort(key=lambda r: r.get("date") or "")
-            latest = bb[-1]
-            conc = latest.get("concentration_pct")
-            bb_date = latest.get("date") or ""
-            last_view = window[-1].get("date") if window else None
-            fresh = True
-            if last_view and bb_date:
-                try:
-                    gap = (date.fromisoformat(last_view)
-                           - date.fromisoformat(bb_date)).days
-                    fresh = gap <= 7
-                except ValueError:
-                    pass
-            if fresh and conc is not None and abs(conc) >= 15:
-                dlabel = bb_date[5:].replace("-", "/") if bb_date else ""
-                if conc >= 15:
-                    alerts.append({
-                        "kind": "broker_concentration", "icon": "🪙",
-                        "tone": "info",
-                        "text": f"分點:主力強吸貨 集中度+{conc:.0f}% ({dlabel})",
-                    })
-                else:
-                    alerts.append({
-                        "kind": "broker_concentration", "icon": "🪙",
-                        "tone": "warn",
-                        "text": f"分點:主力強出貨 集中度{conc:.0f}% ({dlabel})",
-                    })
+        last_view = window[-1].get("date") if window else None
+        concl = _broker_conclusion(code, last_view)
+        if concl:
+            alerts.append({"kind": concl["kind"], "icon": concl["icon"],
+                           "tone": concl["tone"], "text": concl["text"]})
 
     return alerts
 
@@ -3005,6 +2979,53 @@ def _broker_branch_state(conc: float | None) -> dict:
     return {"kind": "balanced", "label": "籌碼分散/中性", "tone": "neutral"}
 
 
+# Conclusion threshold for the 提醒 chip + 今日觸發 panel. Only the strong
+# tier is decisive enough to surface as a "conclusion"; milder reads live
+# in the 券商分點 card.
+BROKER_CONCL_MIN_PCT = 15.0
+BROKER_CONCL_MAX_AGE_DAYS = 7  # stale 分點 isn't a current conclusion
+
+
+def _broker_conclusion(code: str, ref_date_iso: str | None) -> dict | None:
+    """Return a 券商分點 集中度 conclusion for `code` (or None).
+
+    Shared by the detail-page 提醒 chip (_compute_alerts) and the homepage
+    今日觸發 panel (watchlist_chips). Strong tier only (|集中度| ≥
+    BROKER_CONCL_MIN_PCT) and only if the latest ingested 分點 is within
+    BROKER_CONCL_MAX_AGE_DAYS of ref_date (so stale data isn't shown as a
+    current conclusion). Shape:
+      {direction, stat_key, kind, icon, tone, text, conc, date}
+    Note: deliberately observation-only — callers DON'T forward-log it.
+    """
+    recs = [r for r in _load_broker_branch_log() if r.get("code") == code]
+    if not recs:
+        return None
+    recs.sort(key=lambda r: r.get("date") or "")
+    latest = recs[-1]
+    conc = latest.get("concentration_pct")
+    bb_date = latest.get("date") or ""
+    if conc is None or abs(conc) < BROKER_CONCL_MIN_PCT:
+        return None
+    if ref_date_iso and bb_date:
+        try:
+            gap = (date.fromisoformat(ref_date_iso)
+                   - date.fromisoformat(bb_date)).days
+            if gap > BROKER_CONCL_MAX_AGE_DAYS:
+                return None
+        except ValueError:
+            pass
+    dlabel = bb_date[5:].replace("-", "/") if bb_date else ""
+    if conc >= BROKER_CONCL_MIN_PCT:
+        return {"direction": "buy", "stat_key": "broker_concentration_buy",
+                "kind": "broker_concentration", "icon": "🪙", "tone": "info",
+                "text": f"分點:主力強吸貨 集中度+{conc:.0f}% ({dlabel})",
+                "conc": conc, "date": bb_date}
+    return {"direction": "sell", "stat_key": "broker_concentration_sell",
+            "kind": "broker_concentration", "icon": "🪙", "tone": "warn",
+            "text": f"分點:主力強出貨 集中度{conc:.0f}% ({dlabel})",
+            "conc": conc, "date": bb_date}
+
+
 @app.get("/api/broker_branch/{code}")
 def get_broker_branch(code: str, days: int = 20):
     """Per-stock 券商分點 集中度 — latest snapshot + concentration trend.
@@ -3349,6 +3370,24 @@ def watchlist_chips():
             forward_log.log_emissions(all_emit_records, prev_day_per_code)
         except Exception:  # noqa: BLE001
             pass
+        # 券商分點 conclusion chips — added via a SEPARATE path (not the
+        # stat_key/forward_log machinery) so they show in 今日觸發 without
+        # entering the curated OOS dataset. Observation-only.
+        ref_iso = _trading_day().isoformat()
+        for code in codes:
+            concl = _broker_conclusion(code, ref_iso)
+            if not concl:
+                continue
+            info = _company_info(code)
+            fires.setdefault(concl["stat_key"], []).append({
+                "code": code,
+                "short_name": info.get("short_name") or code,
+                "kind": concl["kind"],
+                "stat_key": concl["stat_key"],
+                "icon": concl["icon"],
+                "text": concl["text"],
+                "tone": concl["tone"],
+            })
         total = sum(len(v) for v in fires.values())
         result = {"chips": fires, "total": total, "scanned": len(codes)}
         _today_chips_cache["date"] = today

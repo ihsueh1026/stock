@@ -2539,6 +2539,8 @@ const CHIP_DISPLAY = {
   reversal_inst_confirm_5:   { label: "反轉 ★★★★★+法人到位", tone: "info" },
   topping_inst_yellow_5:     { label: "強勢延伸 ★★★★★+法人觀望", tone: "info" },
   bearish_divergence:        { label: "頂背離 (短期警示)", tone: "warn" },
+  broker_concentration_buy:  { label: "分點 主力強吸貨", tone: "info" },
+  broker_concentration_sell: { label: "分點 主力強出貨", tone: "warn" },
 };
 const CHIP_DISPLAY_ORDER = [
   "inst_not_confirmed",
@@ -2547,6 +2549,8 @@ const CHIP_DISPLAY_ORDER = [
   "reversal_inst_confirm_4",
   "topping_inst_yellow_5",
   "bearish_divergence",
+  "broker_concentration_buy",
+  "broker_concentration_sell",
 ];
 
 async function loadTodayChips() {
