@@ -7,7 +7,7 @@
   install script to apply.
 
   Headless run of broker_branch_pull.py --no-crawl: the user prepares
-  step 2 (the BSR crawl) earlier in the day, so by 20:00 the CSVs are
+  step 2 (the BSR crawl) earlier in the day, so by 17:00 the CSVs are
   already in twse_web/output/ and this job only INGESTS them (no crawl, no
   interactive pause, no terminal). The crawl — which solves a CAPTCHA — is
   never run or scheduled by this job; it's the user's manual prep.
@@ -33,15 +33,15 @@
     <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- Weekdays 20:00 — after TWSE close (13:30) and after BSR publishes
-       the day's 分點. launchd auto-catches up if the Mac was asleep. -->
+  <!-- Weekdays 17:00 — after TWSE close (13:30); the user crawls the
+       day's 分點 beforehand. launchd auto-catches up if the Mac slept. -->
   <key>StartCalendarInterval</key>
   <array>
-    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
   </array>
 
   <key>StandardOutPath</key>
