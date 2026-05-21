@@ -1454,6 +1454,44 @@ def _compute_alerts(window, code=None, market=MARKET_TWSE,
                 if note:
                     a["industry_note"] = note
 
+    # --- 券商分點 集中度 結論 (from the semi-manual ingest log) ---
+    # No `stat_key` → shows in the detail-page 提醒 strip but is excluded
+    # from the watchlist chip scan + forward_log (both require stat_key).
+    # Only the strong tier (|集中度| ≥ 15%) is decisive enough to surface
+    # as a conclusion; the full 券商分點 card carries the milder reads.
+    # Skipped when the latest ingested 分點 is >7 days older than the view,
+    # so a stale data point isn't presented as a current conclusion.
+    if code:
+        bb = [r for r in _load_broker_branch_log() if r.get("code") == code]
+        if bb:
+            bb.sort(key=lambda r: r.get("date") or "")
+            latest = bb[-1]
+            conc = latest.get("concentration_pct")
+            bb_date = latest.get("date") or ""
+            last_view = window[-1].get("date") if window else None
+            fresh = True
+            if last_view and bb_date:
+                try:
+                    gap = (date.fromisoformat(last_view)
+                           - date.fromisoformat(bb_date)).days
+                    fresh = gap <= 7
+                except ValueError:
+                    pass
+            if fresh and conc is not None and abs(conc) >= 15:
+                dlabel = bb_date[5:].replace("-", "/") if bb_date else ""
+                if conc >= 15:
+                    alerts.append({
+                        "kind": "broker_concentration", "icon": "🪙",
+                        "tone": "info",
+                        "text": f"分點:主力強吸貨 集中度+{conc:.0f}% ({dlabel})",
+                    })
+                else:
+                    alerts.append({
+                        "kind": "broker_concentration", "icon": "🪙",
+                        "tone": "warn",
+                        "text": f"分點:主力強出貨 集中度{conc:.0f}% ({dlabel})",
+                    })
+
     return alerts
 
 
