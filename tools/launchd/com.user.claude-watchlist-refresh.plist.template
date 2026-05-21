@@ -33,10 +33,14 @@
     <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- Weekdays 07:00 — TWSE opens 09:00, so 2h before market open
-       leaves room for the launchd to fire (auto-catches up if the
-       Mac was asleep, unlike cron) and for the 30-60s sequential
-       TWSE fetch loop to finish before the user opens the browser. -->
+  <!-- Two weekday runs:
+       07:00 — pre-market warm-up: refreshes the prior completed trading
+       day + overnight US closes so the dashboard loads instantly at open.
+       17:00 — post-close: this is the trading-day rollover hour (see
+       TRADING_DAY_ROLLOVER_HOUR in app.py), so by now today's daily
+       OHLCV / T86 / 融資借券 are published and the cache tag has advanced
+       to today — this run pulls today's complete data.
+       launchd auto-catches up if the Mac was asleep (unlike cron). -->
   <key>StartCalendarInterval</key>
   <array>
     <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
@@ -44,6 +48,11 @@
     <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
   </array>
 
   <!-- Persistent log so cron diagnosis works across reboots. -->
