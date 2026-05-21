@@ -2812,12 +2812,15 @@ function renderTodayChips(d) {
     );
   }
   body.innerHTML = rows.join("");
-  // Wire up stock-link clicks to navigate
+  // Wire up stock-link clicks to navigate. Navigate via the hash (not
+  // showDetail() directly) so the router stays in sync — otherwise the
+  // hash stays "#/" and the detail page's 返回清單 (which sets hash to
+  // "#/") fires no hashchange, leaving the user stuck on the detail view.
   body.querySelectorAll(".tc-stock-link").forEach(el => {
     el.addEventListener("click", (ev) => {
       ev.preventDefault();
       const code = el.getAttribute("data-code");
-      if (code) showDetail(code);
+      if (code) window.location.hash = "#/stock/" + code;
     });
   });
 }
