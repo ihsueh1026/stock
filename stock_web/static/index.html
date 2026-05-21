@@ -427,6 +427,36 @@
   .today-chips .tc-stock-link:hover { text-decoration: underline; }
   .today-chips .tc-empty { color: var(--text-faint); font-size: 11.5px; }
 
+  /* Collapsible automation-schedule reference. Default-collapsed so it's
+     present on the homepage but doesn't add height until expanded. */
+  .sched-panel {
+    margin: 0 0 14px 0; padding: 8px 12px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 12.5px;
+  }
+  .sched-panel > summary {
+    cursor: pointer; color: var(--text-muted); font-size: 12px;
+    list-style: none; user-select: none;
+  }
+  .sched-panel > summary::-webkit-details-marker { display: none; }
+  .sched-panel[open] > summary {
+    color: var(--text); margin-bottom: 8px;
+  }
+  .sched-body { display: flex; flex-direction: column; gap: 5px; }
+  .sched-row {
+    display: grid; grid-template-columns: 48px 1fr;
+    gap: 10px; align-items: baseline;
+  }
+  .sched-time {
+    color: var(--accent); font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .sched-desc { color: var(--text-muted); }
+  .sched-note {
+    margin-top: 6px; color: var(--text-faint);
+    font-size: 11px; line-height: 1.6;
+  }
+
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -2038,6 +2068,16 @@
         <div class="tc-body" id="todayChipsBody"></div>
       </div>
     </div>
+    <details class="sched-panel" id="schedPanel">
+      <summary>⏱ 自動更新排程</summary>
+      <div class="sched-body">
+        <div class="sched-row"><span class="sched-time">07:00</span><span class="sched-desc">盤前更新個股(前一交易日 + 美股隔夜收盤)</span></div>
+        <div class="sched-row"><span class="sched-time">16:30</span><span class="sched-desc">交易日換日 + 盤後更新個股(收盤 / 三大法人 / 融資借券)</span></div>
+        <div class="sched-row"><span class="sched-time">17:00</span><span class="sched-desc">券商分點 ingest(需於 17:00 前手動爬好分點 CSV)</span></div>
+        <div class="sched-row"><span class="sched-time">21:00</span><span class="sched-desc">更新 watchlist 新聞(Yahoo + MOPS 情緒標註)</span></div>
+        <div class="sched-note">週一~五自動執行(launchd)。資料源:TWSE / TPEx 官方(個股 · 法人 · 融資借券)、yfinance(美股)、BSR 券商分點(半自動,爬蟲須手動)。</div>
+      </div>
+    </details>
     <div class="grid" id="watchlistGrid"></div>
   </section>
 
