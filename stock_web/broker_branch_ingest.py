@@ -257,6 +257,10 @@ def main() -> None:
     ap.add_argument("--date", default=None,
                     help="force trading date YYYY-MM-DD (overrides volume "
                          "auto-detect; default fallback: prev weekday)")
+    ap.add_argument("--fallback-date", default=None,
+                    help="date used ONLY when volume can't verify (does NOT "
+                         "force/override auto-detect). Scheduled evening runs "
+                         "pass today. Default: prev weekday")
     ap.add_argument("--indir", default=None,
                     help="ingest only this directory (overrides defaults)")
     ap.add_argument("--force", action="store_true",
@@ -266,7 +270,10 @@ def main() -> None:
     # `d` is the FALLBACK date — used only when a file's volume can't pin
     # its trading day. Files carry no date, and the BSR-latest day depends
     # on crawl timing, so we prefer volume-verified per-file dates.
-    d = args.date or _prev_weekday(date.today()).isoformat()
+    # --date is a hard force (also sets the fallback); --fallback-date only
+    # changes the fallback without forcing.
+    d = (args.date or args.fallback_date
+         or _prev_weekday(date.today()).isoformat())
     existing = _load_existing_keys()
 
     # Sources: manual paste dir + the crawler's output dir. A given code

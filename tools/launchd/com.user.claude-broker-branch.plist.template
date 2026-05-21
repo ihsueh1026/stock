@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template — install_broker_branch.sh substitutes __REPO_PATH__ and
+  __PYTHON_BIN__, writes the rendered plist to ~/Library/LaunchAgents/,
+  then loads it. Edit this template to change schedule / paths; re-run the
+  install script to apply.
+
+  Headless run of broker_branch_pull.py --no-crawl: the user prepares
+  step 2 (the BSR crawl) earlier in the day, so by 20:00 the CSVs are
+  already in twse_web/output/ and this job only INGESTS them (no crawl, no
+  interactive pause, no terminal). The crawl — which solves a CAPTCHA — is
+  never run or scheduled by this job; it's the user's manual prep.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.claude-broker-branch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>cd "__REPO_PATH__" &amp;&amp; "__PYTHON_BIN__" "__REPO_PATH__/tools/broker_branch_pull.py" --no-crawl</string>
+  </array>
+  <!-- Script path not `-m`: under launchd's minimal shell, `-m` resolution
+       from a CJK/CloudStorage cwd is unreliable; the script's own
+       sys.path handling (via stock_web import) works regardless. -->
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- Weekdays 20:00 — after TWSE close (13:30) and after BSR publishes
+       the day's 分點. launchd auto-catches up if the Mac was asleep. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>__REPO_PATH__/tools/launchd/broker-branch.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO_PATH__/tools/launchd/broker-branch.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

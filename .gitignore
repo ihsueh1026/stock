@@ -33,6 +33,7 @@ stock_web/news_log.jsonl
 # scheduled jobs). Per-user runtime data.
 tools/launchd/news-update.log
 tools/launchd/watchlist-refresh.log
+tools/launchd/broker-branch.log
 
 # Margin / SBL daily dumps — exempt from the 7-day cache purge (see
 # _PURGE_EXEMPT_PREFIXES in app.py) so they accumulate to feed the
