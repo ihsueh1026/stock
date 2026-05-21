@@ -2495,6 +2495,7 @@ function showWatchlist() {
       <select id="sortMode">
         <option value="manual"${sortMode === "manual" ? " selected" : ""}>手動</option>
         <option value="light"${sortMode === "light" ? " selected" : ""}>燈號</option>
+        <option value="change"${sortMode === "change" ? " selected" : ""}>漲跌</option>
         <option value="industry"${sortMode === "industry" ? " selected" : ""}>產業</option>
         <option value="code"${sortMode === "code" ? " selected" : ""}>股號</option>
       </select>
@@ -3045,6 +3046,17 @@ function sortWatchItems(items, mode) {
       if (ai && !bi) return -1;
       const c = ai.localeCompare(bi, "zh-Hant");
       return c !== 0 ? c : a.code.localeCompare(b.code);
+    });
+  } else if (mode === "change") {
+    // 漲跌幅由大到小(漲幅最大在上、跌幅最大在下);無資料沉底。
+    arr.sort((a, b) => {
+      const av = (a.change_pct == null) ? null : a.change_pct;
+      const bv = (b.change_pct == null) ? null : b.change_pct;
+      if (av == null && bv == null) return a.code.localeCompare(b.code);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (av !== bv) return bv - av;
+      return a.code.localeCompare(b.code);
     });
   } else if (mode === "light") {
     arr.sort((a, b) => {
