@@ -2904,6 +2904,102 @@ def get_institutional(code: str, days: int = 20):
     return _institutional_history(code, market=market, days=days)
 
 
+# --- 券商分點 (broker branch) ------------------------------------------------
+# Reads the semi-manual accumulation log written by
+# `stock_web/broker_branch_ingest.py` (parses the user's BSR-crawler /
+# hand-pasted 分點分價 CSVs into per-(code,date) concentration metrics).
+# There is NO free automated source — TWSE BSR is CAPTCHA-gated and
+# FinMind 分點 is sponsor-only — so this panel only has data for codes the
+# user has ingested. Endpoint is read-only + mtime-cached; the log is
+# per-user runtime data (gitignored), so the panel hides cleanly when a
+# code has never been ingested.
+
+_BROKER_BRANCH_LOG_PATH = (Path(__file__).resolve().parent
+                           / "broker_branch_log.jsonl")
+_broker_branch_cache: list | None = None
+_broker_branch_mtime: float = 0.0
+
+
+def _load_broker_branch_log() -> list:
+    """Return all log records (list of dicts), mtime-cached so fresh
+    ingests are picked up without a restart. Empty list if absent."""
+    global _broker_branch_cache, _broker_branch_mtime
+    if not _BROKER_BRANCH_LOG_PATH.exists():
+        return []
+    try:
+        m = _BROKER_BRANCH_LOG_PATH.stat().st_mtime
+    except OSError:
+        return []
+    if _broker_branch_cache is not None and m == _broker_branch_mtime:
+        return _broker_branch_cache
+    recs: list = []
+    try:
+        with _BROKER_BRANCH_LOG_PATH.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    recs.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return _broker_branch_cache or []
+    _broker_branch_cache = recs
+    _broker_branch_mtime = m
+    return recs
+
+
+def _broker_branch_state(conc: float | None) -> dict:
+    """Map 集中度% to a state label/tone for the UI badge.
+    Positive = main force net buying (吸貨); negative = distributing."""
+    if conc is None:
+        return {"kind": "neutral", "label": "—", "tone": "gray"}
+    if conc >= 15:
+        return {"kind": "accum_strong", "label": "主力強吸貨", "tone": "good"}
+    if conc >= 5:
+        return {"kind": "accum", "label": "主力偏買", "tone": "good"}
+    if conc <= -15:
+        return {"kind": "distrib_strong", "label": "主力強出貨",
+                "tone": "warn"}
+    if conc <= -5:
+        return {"kind": "distrib", "label": "主力偏賣", "tone": "warn"}
+    return {"kind": "balanced", "label": "籌碼分散/中性", "tone": "neutral"}
+
+
+@app.get("/api/broker_branch/{code}")
+def get_broker_branch(code: str, days: int = 20):
+    """Per-stock 券商分點 集中度 — latest snapshot + concentration trend.
+
+    Sourced from the ingest log (`broker_branch_log.jsonl`). Returns
+    `available: false` if this code has never been ingested. `days`
+    clamps the returned trend history to [5, 60] most-recent entries.
+    """
+    _validate_code(code)
+    days = max(5, min(int(days or 20), 60))
+    recs = [r for r in _load_broker_branch_log() if r.get("code") == code]
+    if not recs:
+        return {"code": code, "available": False}
+    recs.sort(key=lambda r: r.get("date") or "")
+    latest = recs[-1]
+    history = [
+        {"date": r.get("date"),
+         "concentration_pct": r.get("concentration_pct"),
+         "main_force_net_lots": r.get("main_force_net_lots"),
+         "day_volume_lots": r.get("day_volume_lots")}
+        for r in recs[-days:]
+    ]
+    return {
+        "code": code,
+        "available": True,
+        "as_of": latest.get("date"),
+        "n_dates": len(recs),
+        "latest": latest,
+        "state": _broker_branch_state(latest.get("concentration_pct")),
+        "history": history,
+    }
+
+
 # --- US market snapshot ------------------------------------------------------
 # Reads the rolling caches written by `python3 -m backtest.prefetch_us`
 # (Yahoo Finance via yfinance) and serves the latest close + 1-day

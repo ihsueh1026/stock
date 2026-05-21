@@ -1199,6 +1199,78 @@
   @media (max-width: 720px) {
     .inst-grid { grid-template-columns: 1fr; }
   }
+  /* 券商分點 panel — main-force concentration from the ingest log
+     (broker_branch_log.jsonl). 集中度 = 前15大主力淨買賣 ÷ 當日量.
+     Asia colour: 買超 = red, 賣超 = green. Observation only. */
+  .bb-card { margin-top: 14px; padding: 12px 16px; }
+  .bb-head { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .bb-badge {
+    font-size: 12px; font-weight: 600; padding: 3px 10px;
+    border-radius: 12px; border: 1px solid var(--border-soft);
+    color: var(--text-muted);
+  }
+  .bb-badge.buy {
+    color: var(--price-up); background: rgba(248,113,113,.12);
+    border-color: rgba(248,113,113,.35);
+  }
+  .bb-badge.sell {
+    color: var(--price-down); background: rgba(52,211,153,.12);
+    border-color: rgba(52,211,153,.35);
+  }
+  .bb-conc {
+    font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+  .bb-conc.buy { color: var(--price-up); }
+  .bb-conc.sell { color: var(--price-down); }
+  .bb-summary {
+    margin-top: 8px; font-size: 12px; color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .bb-summary b.buy { color: var(--price-up); }
+  .bb-summary b.sell { color: var(--price-down); }
+  .bb-cols {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; margin-top: 10px;
+  }
+  .bb-col {
+    background: var(--card-2); border: 1px solid var(--border-soft);
+    border-radius: 6px; padding: 8px 10px;
+  }
+  .bb-col-title { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+  .bb-col-title.buy { color: var(--price-up); }
+  .bb-col-title.sell { color: var(--price-down); }
+  .bb-row {
+    display: flex; justify-content: space-between; gap: 8px;
+    font-size: 12px; padding: 2px 0; font-variant-numeric: tabular-nums;
+  }
+  .bb-bk {
+    color: var(--text-muted); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bb-net.buy { color: var(--price-up); }
+  .bb-net.sell { color: var(--price-down); }
+  .bb-trend { margin-top: 10px; }
+  .bb-trend-label {
+    font-size: 11px; color: var(--text-faint); margin-bottom: 2px;
+  }
+  .bb-bars {
+    display: flex; align-items: center; gap: 1px; height: 28px;
+  }
+  .bb-bar-wrap {
+    flex: 1; height: 100%; position: relative;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .bb-bar { width: 100%; position: absolute; left: 0; border-radius: 1px; }
+  .bb-bar.buy { background: var(--price-up); }
+  .bb-bar.sell { background: var(--price-down); }
+  .bb-note {
+    margin-top: 10px; font-size: 10.5px; color: var(--text-faint);
+    font-style: italic;
+  }
+  @media (max-width: 720px) {
+    .bb-cols { grid-template-columns: 1fr; }
+  }
   /* 籌碼面 (margin / SBL) panel — 4-cell observation grid sits between
      the EPS trend and the news/revenue two-col on the detail page.
      Pure information surface — no signal claim. Numbers are 張 (lots),
@@ -2143,6 +2215,29 @@
       </div>
       <div class="inst-grid" id="instGrid"></div>
       <div class="inst-note">單位 = 張 · 連續天數與累積淨額取最近 20 個交易日 · 觀察用</div>
+    </section>
+
+    <section class="card bb-card" id="brokerBranchCard" hidden>
+      <div class="card-title">
+        <span>券商分點 <span class="meta" id="bbMeta"></span></span>
+      </div>
+      <div class="bb-head">
+        <span class="bb-badge" id="bbBadge">—</span>
+        <span class="bb-conc" id="bbConc"></span>
+      </div>
+      <div class="bb-summary" id="bbSummary"></div>
+      <div class="bb-cols">
+        <div class="bb-col">
+          <div class="bb-col-title buy">買超前 5 主力</div>
+          <div id="bbBuy"></div>
+        </div>
+        <div class="bb-col">
+          <div class="bb-col-title sell">賣超前 5 主力</div>
+          <div id="bbSell"></div>
+        </div>
+      </div>
+      <div class="bb-trend" id="bbTrend" hidden></div>
+      <div class="bb-note">集中度 = 前15大主力淨買賣 ÷ 當日量 · 單位張 · 觀察用,非買賣訊號</div>
     </section>
 
     <section class="card margin-sbl-card" id="marginSblCard" hidden>
@@ -3465,6 +3560,7 @@ async function loadFundamentals(code, lastClose) {
   loadEpsHistory(code);
   loadDividend(code, lastClose);
   loadInstitutional(code);
+  loadBrokerBranch(code);
   loadMarginSbl(code);
 }
 
@@ -3539,6 +3635,84 @@ function renderInstitutional(d) {
       </div>`;
   };
   grid.innerHTML = cell("foreign", "f") + cell("trust", "t") + cell("dealer", "d");
+}
+
+// 券商分點 panel — main-force concentration from the ingest log. Hidden
+// if /api/broker_branch has no data for this code (never ingested). Asia
+// colour: 買超 = red, 賣超 = green.
+async function loadBrokerBranch(code) {
+  const card = document.getElementById("brokerBranchCard");
+  if (!card) return;
+  card.hidden = true;
+  try {
+    const res = await fetch(`/api/broker_branch/${encodeURIComponent(code)}?days=20`);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.available) return;
+    renderBrokerBranch(d);
+    card.hidden = false;
+  } catch (e) {
+    // optional panel; swallow
+  }
+}
+
+function renderBrokerBranch(d) {
+  const L = d.latest || {};
+  const tone = (d.state && d.state.tone) || "neutral";
+  const cls = tone === "good" ? "buy" : (tone === "warn" ? "sell" : "neutral");
+  const fmt = (v) => (v == null ? "—"
+    : (v > 0 ? "+" : "") + Number(v).toLocaleString("en-US"));
+
+  const meta = document.getElementById("bbMeta");
+  if (meta) {
+    const dt = d.as_of ? d.as_of.slice(5).replace("-", "/") : "";
+    meta.textContent = dt + (d.n_dates > 1 ? ` · ${d.n_dates} 日` : "");
+  }
+  const badge = document.getElementById("bbBadge");
+  badge.className = "bb-badge " + cls;
+  badge.textContent = (d.state && d.state.label) || "—";
+  const conc = document.getElementById("bbConc");
+  const c = L.concentration_pct;
+  conc.className = "bb-conc " + cls;
+  conc.textContent = (c == null) ? "" : (c > 0 ? "+" : "") + c.toFixed(1) + "%";
+
+  const summary = document.getElementById("bbSummary");
+  summary.innerHTML =
+    `主力淨 <b class="${cls}">${fmt(L.main_force_net_lots)}</b> 張`
+    + ` · 當日量 ${Number(L.day_volume_lots || 0).toLocaleString("en-US")} 張`
+    + ` · 買家 ${L.n_buy_branches ?? "—"} / 賣家 ${L.n_sell_branches ?? "—"}`
+    + (L.main_force_buy_cost != null ? ` · 主力買均 ${L.main_force_buy_cost}` : "");
+
+  const rows = (arr, c2) => {
+    const html = (arr || []).slice(0, 5).map(b => {
+      const net = (b.net_lots > 0 ? "+" : "") + Number(b.net_lots).toLocaleString("en-US");
+      return `<div class="bb-row"><span class="bb-bk">${escapeHtml(b.name || b.broker)}</span>`
+        + `<span class="bb-net ${c2}">${net}</span></div>`;
+    }).join("");
+    return html || `<div class="bb-row"><span class="bb-bk note">—</span></div>`;
+  };
+  document.getElementById("bbBuy").innerHTML = rows(L.top_buy, "buy");
+  document.getElementById("bbSell").innerHTML = rows(L.top_sell, "sell");
+
+  // Concentration trend — only when ≥2 ingested dates exist.
+  const trend = document.getElementById("bbTrend");
+  const hist = (d.history || []).filter(h => h.concentration_pct != null);
+  if (hist.length >= 2) {
+    let mx = 1;
+    hist.forEach(h => { mx = Math.max(mx, Math.abs(h.concentration_pct)); });
+    trend.innerHTML = `<div class="bb-trend-label">集中度趨勢</div><div class="bb-bars">`
+      + hist.map(h => {
+        const v = h.concentration_pct;
+        const ht = Math.max(1, Math.round(Math.abs(v) / mx * 12));
+        const bc = v > 0 ? "buy" : "sell";
+        const st = v >= 0 ? `height:${ht}px;bottom:50%;` : `height:${ht}px;top:50%;`;
+        const t = `${h.date}: ${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+        return `<span class="bb-bar-wrap" title="${escapeHtml(t)}"><span class="bb-bar ${bc}" style="${st}"></span></span>`;
+      }).join("") + `</div>`;
+    trend.hidden = false;
+  } else {
+    trend.hidden = true;
+  }
 }
 
 // 籌碼面 panel — 融資 / 融券 / 借券 / 資券比 observation card. Pure

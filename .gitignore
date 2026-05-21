@@ -40,3 +40,19 @@ tools/launchd/watchlist-refresh.log
 # regenerate via `python3 -m backtest.prefetch_margin_sbl`.
 stock_web/cache/margin_*.json
 stock_web/cache/sbl_*.json
+
+# 券商分點 (broker branch) semi-manual workflow. broker_input/ holds the
+# raw pasted-in branch tables (one {code}.txt per stock); broker_branch_log
+# is the parsed accumulation (集中度 etc) used for future edge backtests.
+# Per-user runtime data — no free automated source (TWSE BSR is CAPTCHA-
+# gated, FinMind 分點 is sponsor-only), so this is hand-fed via Claude.
+stock_web/broker_input/*.txt
+stock_web/broker_input/*.csv
+!stock_web/broker_input/_FORMAT.txt
+stock_web/broker_branch_log.jsonl
+
+# twse_web BSR crawler runtime artifacts: per-stock CSV output and the
+# generated 上市-codes input list (regenerate via export_watchlist_codes.py).
+# Code (twse_broker_scraper.py, export_watchlist_codes.py) IS tracked.
+twse_web/output/*.csv
+twse_web/watchlist_twse.txt
